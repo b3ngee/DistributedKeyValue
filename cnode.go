@@ -1,9 +1,18 @@
-package main
+package cnode
 
 import (
 	"net"
 	"net/rpc"
+	"os"
 )
+
+///////////////////////////////////////////////
+///////////// Global Variables ////////////////
+///////////////////////////////////////////////
+
+///////////////////////////////////////////////
+///////////////// Structs /////////////////////
+///////////////////////////////////////////////
 
 type PlayerInfo struct {
 	PlayerAddr net.TCPAddr
@@ -13,7 +22,7 @@ type PlayerInfo struct {
 }
 
 type CarInfo struct {
-	CarAddr net.TCPAddr
+	CarAddr *net.TCPAddr
 	CarCli  *rpc.Client
 }
 
@@ -30,23 +39,27 @@ type Item struct {
 }
 
 var CarMap = make(map[int]CarInfo)
+
 var PlayerMap = make(map[int]PlayerInfo)
 
-/* Server - Car
- */
+///////////////////////////////////////////////
+/////////////// Server to Car /////////////////
+///////////////////////////////////////////////
 type Server int
 
 func (server *Server) Register(addr string) {
 }
 
-func (server *Server) SendQuestion(question string, answer []byte) {
+func (server *Server) SendQuestion(question string, answer *[]byte) error {
+	return nil
 }
 
 func (server *Server) SendPenalty(timeout int) {
 }
 
-/* Car - Car
- */
+///////////////////////////////////////////////
+/////////////// Car to Car /////////////////
+///////////////////////////////////////////////
 type Car int
 
 func (car *Car) SendInterrupt(timeout int) {
@@ -59,9 +72,9 @@ func (car *Car) SwitchPlayers() {
 
 }
 
-/* Player - Car
- */
-
+///////////////////////////////////////////////
+/////////////// Player to Car /////////////////
+///////////////////////////////////////////////
 type Player int
 
 func (player *Player) RegisterPlayer() {
@@ -72,6 +85,42 @@ func (player *Player) PurchaseItem() {
 }
 
 func (player *Player) SwitchCars() {
+}
+
+///////////////////////////////////////////////
+//////////////// Helpers //////////////////////
+///////////////////////////////////////////////
+
+///////////////////////////////////////////////
+/////////////////// Main //////////////////////
+///////////////////////////////////////////////
+
+// Run cnode: go run cnode.go [serverIP:Port]
+
+func main() {
+	serverAddress := os.Args[1]
+	client, _ := rpc.Dial("tcp", serverAddress)
+
+	listener, _ := net.Listen("tcp", serverAddress)
+	carAddress, _ := net.ResolveTCPAddr("tcp", listener.Addr().String())
+
+	server := new(Server)
+	car := new(Car)
+	player := new(Player)
+	rpc.Register(server)
+	rpc.Register(car)
+	rpc.Register(player)
+
+	// make server RPC call to let server connect to this
+	carNode := CarInfo{
+		CarAddr: carAddress,
+		CarCli:  client,
+	}
+
+	for {
+		conn, _ := listener.Accept()
+		go rpc.ServeConn(conn)
+	}
 }
 
 // make heartbeat from player to display game information relevant to their carnode
