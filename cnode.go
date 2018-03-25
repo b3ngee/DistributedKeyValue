@@ -9,118 +9,180 @@ import (
 ///////////////////////////////////////////////
 ///////////// Global Variables ////////////////
 ///////////////////////////////////////////////
+var CarID int
+
+var ServerInfo ServerNode
+
+var CarMap = make(map[int]CarNode)
+
+var PlayerMap = make(map[int]PlayerNode)
 
 ///////////////////////////////////////////////
 ///////////////// Structs /////////////////////
 ///////////////////////////////////////////////
+type ServerNode struct {
+	PublicAddress  string
+	PrivateAddress string
+	RPCClient      *rpc.Client
+}
 
-type PlayerInfo struct {
-	PlayerAddr net.TCPAddr
+type CarNode struct {
+	CarID     int
+	CarAddr   string
+	RPCClient *rpc.Client
+}
+
+type PlayerNode struct {
 	PlayerID   int
+	PlayerAddr string
+	RPCClient  *rpc.Client
 	IsDriver   bool
-	PlayerCli  *rpc.Client
 }
 
-type CarInfo struct {
-	CarAddr *net.TCPAddr
-	CarCli  *rpc.Client
+type FinalAnswerReply struct {
+	CarID    int
+	Question string
+	Answer   string
 }
 
-type Answer struct {
-	QuestionString string
-	AnswerString   string
-	PlayerID       int
+type AnswerResponse struct {
+	IsCorrect     bool
+	RewardPoints  int
+	RewardCredits int
 }
 
-type Item struct {
-	TargetCarID int
-	ItemName    string
-	ItemID      int
+type PurchaseRequest struct {
+	ItemID          int
+	CarID           int
+	TargetCarNodeID int
 }
 
-var CarMap = make(map[int]CarInfo)
+type PurchaseResponse struct {
+	PurchaseComplete bool
+	Error            string
+}
 
-var PlayerMap = make(map[int]PlayerInfo)
+type PositionValidation struct {
+	CarID            int
+	PreviousPosition int
+	NewPosition      int
+	Delta            int
+}
+
+type CreditValidation struct {
+	CarID          int
+	PreviousCredit int
+	NewCredit      int
+	Delta          int
+}
+
+type Question struct {
+	PlayerID int
+	Question string
+	Answer   string
+}
 
 ///////////////////////////////////////////////
-/////////////// Server to Car /////////////////
+///////////////// Interfaces //////////////////
 ///////////////////////////////////////////////
-type Server int
+type Server interface {
+	// Submit final answer to the server
+	// Receive an answer response from the server of correctness and accredited points/credits if applicable
+	//
+	SubmitAnswer(answer FinalAnswerReply) (response AnswerResponse, err error)
 
-func (server *Server) Register(addr string) {
+	// Purchase an interrupt from the server
+	// Receive an acknowledgement if credit checks out
+	//
+	PurchaseInterrupt(purchase PurchaseRequest) (response PurchaseResponse, err error)
 }
 
-func (server *Server) SendQuestion(question string, answer *[]byte) error {
+type Car interface {
+	// Validates the position reward with the other car nodes in the network
+	ValidatePositionIncrease(position PositionValidation) (err error)
+
+	// Validate the credit reward with the other car nodes in the nework
+	ValidateCreditIncrease(credit CreditValidation) (err error)
+}
+
+type Player interface {
+	// Send question to player
+	SendQuestion(question Question) (err error)
+}
+
+///////////////////////////////////////////////
+///////// Interface Implementation ////////////
+///////////////////////////////////////////////
+func (sn ServerNode) SubmitAnswer(answer FinalAnswerReply) (response AnswerResponse, err error) {
+	return AnswerResponse{}, nil
+}
+
+func (sn ServerNode) PurchaseInterrupt(purchase PurchaseRequest) (response PurchaseResponse, err error) {
+	return PurchaseResponse{}, nil
+}
+
+func (cn CarNode) ValidatePositionIncrease(position PositionValidation) (err error) {
 	return nil
 }
 
-func (server *Server) SendPenalty(timeout int) {
+func (cn CarNode) ValidateCreditIncrease(credit CreditValidation) (err error) {
+	return nil
+}
+
+func (pn PlayerNode) SendQuestion(question Question) (err error) {
+	return nil
 }
 
 ///////////////////////////////////////////////
-/////////////// Car to Car /////////////////
+///////////// Server to Car RPC ///////////////
 ///////////////////////////////////////////////
-type Car int
-
-func (car *Car) SendInterrupt(timeout int) {
-}
-
-func (car *Car) UpdateMap() {
-}
-
-func (car *Car) SwitchPlayers() {
-
-}
 
 ///////////////////////////////////////////////
-/////////////// Player to Car /////////////////
+///////////// Car to Car RPC //////////////////
 ///////////////////////////////////////////////
-type Player int
 
-func (player *Player) RegisterPlayer() {
-}
-
-func (player *Player) PurchaseItem() {
-
-}
-
-func (player *Player) SwitchCars() {
-}
+///////////////////////////////////////////////
+///////////// Car to Player RPC ///////////////
+///////////////////////////////////////////////
 
 ///////////////////////////////////////////////
 //////////////// Helpers //////////////////////
 ///////////////////////////////////////////////
+func ConnectAndListenToServer() {
+	pubServerAddr := os.Args[1]
+	privServerAddr := os.Args[2]
+
+	serverClient, _ := rpc.Dial("tcp", pubServerAddr)
+	serverListener, _ := net.Listen("tcp", privServerAddr)
+	carAddr := serverListener.Addr().String()
+
+	// TODO: whatever method registers car nodes on Server side
+	var carID int
+	registerErr := serverClient.Call("Server.RegisterCarNode", carAddr, &carID)
+	CarID = carID
+
+	ServerNode := ServerNode{
+		PublicAddress:  pubServerAddr,
+		PrivateAddress: privServerAddr,
+		RPCClient:      serverClient,
+	}
+
+	for {
+		conn, _ := serverListener.Accept()
+
+		go rpc.ServeConn(conn)
+	}
+}
 
 ///////////////////////////////////////////////
 /////////////////// Main //////////////////////
 ///////////////////////////////////////////////
 
-// Run cnode: go run cnode.go [serverIP:Port]
+// Run cnode: go run cnode.go [PublicServerIP:Port] [PrivateServerIP:Port]
 
 func main() {
-	serverAddress := os.Args[1]
-	client, _ := rpc.Dial("tcp", serverAddress)
+	go ConnectAndListenToServer()
 
-	listener, _ := net.Listen("tcp", serverAddress)
-	carAddress, _ := net.ResolveTCPAddr("tcp", listener.Addr().String())
-
-	server := new(Server)
-	car := new(Car)
-	player := new(Player)
-	rpc.Register(server)
-	rpc.Register(car)
-	rpc.Register(player)
-
-	// make server RPC call to let server connect to this
-	carNode := CarInfo{
-		CarAddr: carAddress,
-		CarCli:  client,
-	}
-
-	for {
-		conn, _ := listener.Accept()
-		go rpc.ServeConn(conn)
-	}
 }
 
 // make heartbeat from player to display game information relevant to their carnode
