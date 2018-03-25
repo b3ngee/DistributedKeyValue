@@ -26,6 +26,17 @@ type Player struct {
 
 }
 
+type CarDisconnectError string
+
+func (e CarDisconnectError) Error() string {
+	return fmt.Sprintf("Player disconnected from car [%s]", string(e))
+}
+
+type PlayerAddressRegisteredError string
+
+func (e PlayerAddressRegisteredError) Error() string {
+	return fmt.Sprintf("The player's address is already registered [%s]", string(e))
+}
 
 
 // When player node recieves a question then it will prompt the player to answer
