@@ -81,6 +81,8 @@ type Question struct {
 ///////////////////////////////////////////////
 var CarID int
 
+var PlayerID int
+
 var CarPublicAddress string
 
 var CarPrivateAddress string
@@ -172,6 +174,23 @@ func (c Car) RegisterCar(car CarNode, isRegistered *bool) (err error) {
 ///////////////////////////////////////////////
 type Player int
 
+func (p Player) RegisterPlayer(playerAddr string, reply *int) (err error) {
+	PlayerID = PlayerID + 1
+	*reply = PlayerID
+	playerClient, err := rpc.Dial("tcp", playerAddr)
+	HandleError(err)
+
+	newPlayer := PlayerNode{
+		PlayerID:   PlayerID,
+		PlayerAddr: playerAddr,
+		RPCClient:  playerClient,
+		IsDriver:   false,
+	}
+
+	PlayerMap[PlayerID] = newPlayer
+	return nil
+}
+
 ///////////////////////////////////////////////
 //////////////// Helpers //////////////////////
 ///////////////////////////////////////////////
@@ -179,16 +198,12 @@ func ConnectToServer() {
 	pubServerAddr := os.Args[1]
 
 	serverClient, dialErr := rpc.Dial("tcp", pubServerAddr)
-	if dialErr != nil {
-		fmt.Println(dialErr)
-	}
+	HandleError(dialErr)
 
 	// TODO: whatever method registers car nodes on Server side
 	var carReply CarReply
 	callErr := serverClient.Call("Server.RegisterCar", CarPublicAddress, &carReply)
-	if callErr != nil {
-		fmt.Println(callErr)
-	}
+	HandleError(callErr)
 
 	CarID = carReply.CarID
 
@@ -205,7 +220,8 @@ func ConnectToServer() {
 func ConnectToCarNode(car CarNode) {
 	id := car.CarID
 	addr := car.CarAddr
-	carClient, _ := rpc.Dial("tcp", addr)
+	carClient, err := rpc.Dial("tcp", addr)
+	HandleError(err)
 
 	otherCar := CarNode{
 		CarID:     id,
@@ -215,7 +231,8 @@ func ConnectToCarNode(car CarNode) {
 	CarMap[id] = otherCar
 
 	var isRegistered bool
-	carClient.Call("Car.RegisterCar", CarNode{CarID: CarID, CarAddr: CarPublicAddress}, &isRegistered)
+	err = carClient.Call("Car.RegisterCar", CarNode{CarID: CarID, CarAddr: CarPublicAddress}, &isRegistered)
+	HandleError(err)
 
 	if isRegistered {
 		fmt.Printf("Successful! Car %d and Car %d bidirectional connection succeeded.", CarID, id)
@@ -233,6 +250,8 @@ func ConnectToCarNode(car CarNode) {
 func main() {
 	c := new(Car)
 	rpc.Register(c)
+	p := new(Player)
+	rpc.Register(p)
 
 	go ConnectToServer()
 
@@ -241,8 +260,13 @@ func main() {
 	cListener, _ := net.Listen("tcp", CarPrivateAddress)
 	for {
 		conn, _ := cListener.Accept()
-
 		go rpc.ServeConn(conn)
+	}
+}
+
+func HandleError(err error) {
+	if err != nil {
+		fmt.Println(err)
 	}
 }
 
