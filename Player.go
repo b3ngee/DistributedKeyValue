@@ -2,6 +2,10 @@
 
 Implements the player node structure
 
+USAGE:
+
+go run player.go [cNode Public IP] [pNode Public IP] [pNode Private IP]
+
 */
 
 package main
@@ -11,18 +15,17 @@ import (
 	"net"
 	"os"
 	"bufio"
-	//"net/rpc"
+	"net/rpc"
 )
 
+type CNode int
 
 // Structure for the Player node to store necessary information
-type Player struct {
+type PlayerNode struct {
 	PlayerID	   int
 	PlayerAddr	   net.TCPAddr
+	RPCClient	   *rpc.Client
 	IsDriver	   bool
-
-	CarNodeID      string
-	CarNodeAddr    string
 
 }
 
@@ -44,6 +47,8 @@ func (e PlayerAddressRegisteredError) Error() string {
 func ReceiveQuestion(question string){
 	InputAnswer(question)
 }
+
+
 
 // Run a command line input reader every time a question is asked, close when done
 func InputAnswer(question string){
@@ -82,12 +87,26 @@ func CheckAnswer(answer string) bool{
 }
 
 
+
 // runs the main function for the player
 func main() {
 
-	fmt.Println("Yolo")
-
 	var string = "True or False \nLondon is my city"
+
+	cNodePubIP := os.Args[1]
+	pNodePubIp := os.Args[2]
+
+	lis, err := net.Listen("tcp", os.Args[3])
+	pNodePrivAddr := lis.Addr()
+
+	fmt.Println(pNodePrivAddr)
+
+	cli, _ := rpc.Dial("tcp", cNodePubIP)
+	err = cli.Call("PlayerNode.RegisterPlayer", pNodePubIp, &cNodePubIP)
+
+	fmt.Println(err)
+
+
 
 	ReceiveQuestion(string)
 
