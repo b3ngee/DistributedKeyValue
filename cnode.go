@@ -8,21 +8,6 @@ import (
 )
 
 ///////////////////////////////////////////////
-///////////// Global Variables ////////////////
-///////////////////////////////////////////////
-var CarID int
-
-var CarPublicAddress string
-
-var CarPrivateAddress string
-
-var ServerInfo ServerNode
-
-var CarMap = make(map[int]CarNode)
-
-var PlayerMap = make(map[int]PlayerNode)
-
-///////////////////////////////////////////////
 ///////////////// Structs /////////////////////
 ///////////////////////////////////////////////
 type ServerNode struct {
@@ -92,6 +77,21 @@ type Question struct {
 }
 
 ///////////////////////////////////////////////
+///////////// Global Variables ////////////////
+///////////////////////////////////////////////
+var CarID int
+
+var CarPublicAddress string
+
+var CarPrivateAddress string
+
+var ServerInfo ServerNode
+
+var CarMap = make(map[int]CarNode)
+
+var PlayerMap = make(map[int]PlayerNode)
+
+///////////////////////////////////////////////
 ///////////////// Interfaces //////////////////
 ///////////////////////////////////////////////
 type ServerInterface interface {
@@ -143,16 +143,11 @@ func (pn PlayerNode) SendQuestion(question Question) (err error) {
 }
 
 ///////////////////////////////////////////////
-///////////// Server to Car RPC ///////////////
-///////////////////////////////////////////////
-type Server int
-
-///////////////////////////////////////////////
 ///////////// Car to Car RPC //////////////////
 ///////////////////////////////////////////////
 type Car int
 
-func (c Car) RegisterCarNode(car CarNode, isRegistered *bool) (err error) {
+func (c Car) RegisterCar(car CarNode, isRegistered *bool) (err error) {
 	id := car.CarID
 	addr := car.CarAddr
 	carClient, dialErr := rpc.Dial("tcp", addr)
@@ -183,11 +178,17 @@ type Player int
 func ConnectToServer() {
 	pubServerAddr := os.Args[1]
 
-	serverClient, _ := rpc.Dial("tcp", pubServerAddr)
+	serverClient, dialErr := rpc.Dial("tcp", pubServerAddr)
+	if dialErr != nil {
+		fmt.Println(dialErr)
+	}
 
 	// TODO: whatever method registers car nodes on Server side
 	var carReply CarReply
-	serverClient.Call("Server.RegisterCarNode", CarPublicAddress, &carReply)
+	callErr := serverClient.Call("Server.RegisterCar", CarPublicAddress, &carReply)
+	if callErr != nil {
+		fmt.Println(callErr)
+	}
 
 	CarID = carReply.CarID
 
@@ -214,7 +215,7 @@ func ConnectToCarNode(car CarNode) {
 	CarMap[id] = otherCar
 
 	var isRegistered bool
-	carClient.Call("Car.RegisterCarNode", CarNode{CarID: CarID, CarAddr: CarPublicAddress}, &isRegistered)
+	carClient.Call("Car.RegisterCar", CarNode{CarID: CarID, CarAddr: CarPublicAddress}, &isRegistered)
 
 	if isRegistered {
 		fmt.Printf("Successful! Car %d and Car %d bidirectional connection succeeded.", CarID, id)
@@ -230,6 +231,9 @@ func ConnectToCarNode(car CarNode) {
 // Run cnode: go run cnode.go [PublicServerIP:Port] [PublicCnodeIP:Port] [PrivateCnodeIP:Port]
 
 func main() {
+	c := new(Car)
+	rpc.Register(c)
+
 	go ConnectToServer()
 
 	CarPublicAddress = os.Args[2]
