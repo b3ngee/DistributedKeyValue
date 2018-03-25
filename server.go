@@ -79,12 +79,15 @@ func (servNode *ServerNode) RegisterCar(car CarRegister, reply *[]string) error 
 		return GameFullError(strconv.Itoa(maxNumPlayer))
 	}
 
-	var carArray []string
-
 	for address := range carMap {
 		if car.Address == address {
 			return AddressRegisteredError(address)
 		}
+	}
+
+	var carArray []string
+
+	for address := range carMap {
 		carArray = append(carArray, address)
 	}
 
