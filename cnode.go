@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
+	"time"
 )
 
 ///////////////////////////////////////////////
@@ -57,10 +59,8 @@ type PurchaseResponse struct {
 }
 
 type PositionValidation struct {
-	CarID            int
-	PreviousPosition int
-	NewPosition      int
-	Delta            int
+	CarID       int
+	NewPosition int
 }
 
 type CreditValidation struct {
@@ -71,7 +71,7 @@ type CreditValidation struct {
 }
 
 type Question struct {
-	PlayerID int
+	ID       int
 	Question string
 	Answer   string
 }
@@ -83,6 +83,8 @@ var CarID int
 
 var PlayerID int
 
+var NumPlayersAnswered int
+
 var CarPublicAddress string
 
 var CarPrivateAddress string
@@ -92,6 +94,10 @@ var ServerInfo ServerNode
 var CarMap = make(map[int]CarNode)
 
 var PlayerMap = make(map[int]PlayerNode)
+
+var AnswerTally = make(map[string]int)
+
+var PositionMap = make(map[int]int)
 
 ///////////////////////////////////////////////
 ///////////////// Interfaces //////////////////
@@ -145,6 +151,24 @@ func (pn PlayerNode) SendQuestion(question Question) (err error) {
 }
 
 ///////////////////////////////////////////////
+///////////// Server to Car RPC ///////////////
+///////////////////////////////////////////////
+
+// func (c Car) UpdatePosition(pos int) (err error) {
+// 	PositionMap[CarID] = pos
+// 	arg := PositionValidation{
+// 		CarID:       CarID,
+// 		NewPosition: pos,
+// 	}
+// 	var reply int
+// 	for _, car := range CarMap {
+// 		car.RPCClient.Go("Car.UpdateMap", arg, &reply, nil)
+// 	}
+
+// 	return nil
+// }
+
+///////////////////////////////////////////////
 ///////////// Car to Car RPC //////////////////
 ///////////////////////////////////////////////
 type Car int
@@ -164,19 +188,56 @@ func (c Car) RegisterCar(car CarNode, isRegistered *bool) (err error) {
 		RPCClient: carClient,
 	}
 	CarMap[id] = otherCar
+	PositionMap[id] = 0
 
 	*isRegistered = true
 	return nil
 }
+
+func (c Car) SendQuestion(question Question, answerToServer *Question) (err error) {
+	for pid, _ := range PlayerMap {
+		go SendQuestionToPlayer(pid, question)
+	}
+
+	for {
+		if NumPlayersAnswered == len(PlayerMap) {
+			NumPlayersAnswered = 0
+
+			answer := GetMajorityAnswer()
+
+			*answerToServer = Question{Answer: answer}
+			fmt.Println(question)
+
+			break
+		}
+	}
+
+	return nil
+}
+
+// func (c Car) UpdateMap(arg PositionValidation, reply bool) (err error) {
+// 	id := arg.CarID
+// 	oldPos := PositionMap[id]
+// 	newPos := arg.NewPosition
+// 	if newPos-oldPos > 1 {
+// 		PositionMap[id] = newPos
+// 	} else {
+// 		ServerInfo.RPCClient.Call("Server.HandleInvalidPositionUpdate", id, nil)
+// 	}
+// 	return nil
+// }
 
 ///////////////////////////////////////////////
 ///////////// Player to Car RPC ///////////////
 ///////////////////////////////////////////////
 type Player int
 
-func (p Player) RegisterPlayer(playerAddr string, reply *int) (err error) {
+func (p Player) RegisterPlayer(playerAddr string, reply *bool) (err error) {
 	PlayerID = PlayerID + 1
-	*reply = PlayerID
+	if len(PlayerMap) == 1 {
+		*reply = true
+	}
+	*reply = false
 	playerClient, err := rpc.Dial("tcp", playerAddr)
 	HandleError(err)
 
@@ -188,6 +249,7 @@ func (p Player) RegisterPlayer(playerAddr string, reply *int) (err error) {
 	}
 
 	PlayerMap[PlayerID] = newPlayer
+	fmt.Println(PlayerMap)
 	return nil
 }
 
@@ -229,6 +291,7 @@ func ConnectToCarNode(car CarNode) {
 		RPCClient: carClient,
 	}
 	CarMap[id] = otherCar
+	PositionMap[id] = 0
 
 	var isRegistered bool
 	err = carClient.Call("Car.RegisterCar", CarNode{CarID: CarID, CarAddr: CarPublicAddress}, &isRegistered)
@@ -239,6 +302,56 @@ func ConnectToCarNode(car CarNode) {
 	} else {
 		fmt.Printf("Error! Car %d and Car %d bidirectional connection failed.", CarID, id)
 	}
+}
+
+func SendQuestionToPlayer(pid int, question Question) {
+	player := PlayerMap[pid]
+	client := player.RPCClient
+
+	var answer string
+	client.Call("Player.SendQuestion", question, &answer)
+
+	if answer != "" {
+		fmt.Println(AnswerTally[answer])
+		tally := AnswerTally[answer]
+		AnswerTally[answer] = tally + 1
+		fmt.Printf("Player %d has answered question.", pid)
+		fmt.Println(answer)
+	} else {
+		fmt.Printf("Player %d has failed to answer question in time.", pid)
+	}
+
+	NumPlayersAnswered = NumPlayersAnswered + 1
+}
+
+func GetMajorityAnswer() string {
+	answer := []string{}
+	tempMax := -1
+
+	fmt.Println("in getmajority")
+	fmt.Println(AnswerTally)
+	for key, value := range AnswerTally {
+		if value > tempMax {
+			tempMax = value
+			answer = answer[:0]
+			answer = append(answer, key)
+		} else if value == tempMax {
+			answer = append(answer, key)
+		}
+	}
+
+	AnswerTally = make(map[string]int)
+	fmt.Println("answer")
+	fmt.Println(answer)
+	if len(answer) > 1 {
+		source := rand.NewSource(time.Now().UnixNano())
+		newRand := rand.New(source)
+
+		index := newRand.Intn(len(answer))
+		return answer[index]
+	}
+
+	return answer[0]
 }
 
 ///////////////////////////////////////////////
