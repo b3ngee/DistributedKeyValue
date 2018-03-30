@@ -1,7 +1,0 @@
-{
-  "max-num-players": 24,
-  "min-num-players": 1,
-  "num-questions-to-win": 5,
-  "positions-of-rewards": [2, 4],
-  "bonus-reward": 2
-}
