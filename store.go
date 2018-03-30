@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"./structs"
+	"./errors"
 )
 
 ///////////////////////////////////////////
@@ -13,23 +14,99 @@ import (
 ///////////////////////////////////////////
 
 // Key-value store
-var dictionary map[string](string)
+var Dictionary map[int](string)
 
 // Map of all stores in the network
-var storeNetwork map[string](structs.Store)
+var StoreNetwork map[string](structs.Store)
 
-type Store int
-
+// Server public aaddress
 var ServerAddress string
+
+// Leader's address
+var LeaderAddress string
+
+// Am I leader? 
+var AmILeader bool
+
+// Am I connected?
+var AmIConnected bool
+
+// My public address
 var StorePublicAddress string
+
+// My private address
 var StorePrivateAddress string
 
 ///////////////////////////////////////////
 //			   Incoming RPC		         //
 ///////////////////////////////////////////
+type Store int
 
-func (s *Store) Read(key int, value *string) (err error) {
-	return nil
+// Consistent Read
+// If leader, finds the majority answer from across network and return to client
+// If not let client know to re-read from leader 
+//
+// throws 	NonLeaderReadError 
+//			KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) ConsistentRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return DisconnectedError(StorePublicAddress)
+	}
+
+	if AmILeader {
+		if v, exists := Dictionary[key]; exists {
+			majorityValue := SearchMajorityValue(key)
+			*value = majorityValue
+			return nil
+			// [?] Do we need to update the network with majorityValue?
+		} else {
+			return errors.KeyDoesNotExistError(key)
+		}
+	}
+	
+	return errors.NonLeaderReadError(LeaderAddress)
+}
+
+// Default Read
+// If leader respond with value, if not let client know to re-read from leader 
+//
+// throws 	NonLeaderReadError 
+//			KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) DefaultRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return DisconnectedError(StorePublicAddress)
+	}
+
+	if AmILeader {
+		if v, exists := Dictionary[key]; exists {
+			*value = Dictionary[key]
+			return nil
+		} else {
+			return errors.KeyDoesNotExistError(key)
+		}
+	}
+
+	return errors.NonLeaderReadError(LeaderAddress)
+}
+
+// Fast Read
+// Returns the value regardless of if it is leader or follower
+//
+// throws 	KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) FastRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return DisconnectedError(StorePublicAddress)
+	}
+
+	if v, exists := Dictionary[key]; exists {
+		*value = Dictionary[key]
+		return nil
+	}
+
+	return errors.KeyDoesNotExistError(key)
 }
 
 func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error) {
@@ -42,12 +119,11 @@ func (s *Store) RegisterWithStore(storeAddr string, isLeader *bool) (err error) 
 	storeNetwork[storeAddr] = structs.Store{
 		Address:   storeAddr,
 		RPCClient: client,
-		IsLeader:  false,
+		IsLeader:  AmILeader,
 	}
 
-	// TODO set isLeader to true if you are a leader
-	*isLeader = true
-	return nil
+	*isLeader = AmILeader
+	return nil 
 }
 
 ///////////////////////////////////////////
@@ -82,6 +158,32 @@ func RegisterStore(addr string) {
 ///////////////////////////////////////////
 //			  Helper Methods		     //
 ///////////////////////////////////////////
+func SearchMajorityValue(key int) string {
+	valueArray := make(map[string]int)
+	for _, store := range StoreNetwork {
+		var value string
+		store.RPCClient.Call("Store.FastRead", key, &value)
+
+		if value != "" {
+			if count, exists := valueArray[value]; exists {
+				valueArray[value] = count + 1
+			} else {
+				valueArray[value] = 1
+			}
+		}
+	}
+
+	tempMaxCount := 0
+	majorityValue := ""
+	for k, v := range valueArray {
+		if v > tempMaxCount {
+			v = tempMaxCount
+			majorityValue = k
+		}
+	}
+
+	return majorityValue
+}
 
 func ReceiveHeartBeat() {
 
@@ -102,8 +204,8 @@ func main() {
 
 	RegisterWithServer()
 
-	dictionary = make(map[string](string))
-	storeNetwork = make(map[string](structs.Store))
+	Dictionary = make(map[int](string))
+	StoreNetwork = make(map[string](structs.Store))
 
 	lis, _ := net.Listen("tcp", ServerAddress)
 
