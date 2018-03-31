@@ -4,9 +4,10 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"time"
 
-	"./structs"
 	"./errors"
+	"./structs"
 )
 
 ///////////////////////////////////////////
@@ -25,7 +26,10 @@ var ServerAddress string
 // Leader's address
 var LeaderAddress string
 
-// Am I leader? 
+// Leader's heartbeat (not used by the leader)
+var LeaderHeartbeat time.Time
+
+// Am I leader?
 var AmILeader bool
 
 // Am I connected?
@@ -44,14 +48,14 @@ type Store int
 
 // Consistent Read
 // If leader, finds the majority answer from across network and return to client
-// If not let client know to re-read from leader 
+// If not let client know to re-read from leader
 //
-// throws 	NonLeaderReadError 
+// throws 	NonLeaderReadError
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) ConsistentRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
@@ -64,19 +68,19 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 			return errors.KeyDoesNotExistError(key)
 		}
 	}
-	
+
 	return errors.NonLeaderReadError(LeaderAddress)
 }
 
 // Default Read
-// If leader respond with value, if not let client know to re-read from leader 
+// If leader respond with value, if not let client know to re-read from leader
 //
-// throws 	NonLeaderReadError 
+// throws 	NonLeaderReadError
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) DefaultRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
@@ -98,7 +102,7 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 //			DisconnectedError
 func (s *Store) FastRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
 	if v, exists := Dictionary[key]; exists {
@@ -116,14 +120,27 @@ func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error
 func (s *Store) RegisterWithStore(storeAddr string, isLeader *bool) (err error) {
 	client, _ := rpc.Dial("tcp", storeAddr)
 
-	storeNetwork[storeAddr] = structs.Store{
+	StoreNetwork[storeAddr] = structs.Store{
 		Address:   storeAddr,
 		RPCClient: client,
 		IsLeader:  AmILeader,
 	}
 
 	*isLeader = AmILeader
-	return nil 
+	return nil
+}
+
+func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err error) {
+	if LeaderHeartbeat.IsZero() {
+		LeaderHeartbeat = time.Now()
+	} else {
+		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
+			RequestNewLeader()
+		} else {
+			LeaderHeartbeat = time.Now()
+		}
+	}
+	return nil
 }
 
 ///////////////////////////////////////////
@@ -152,6 +169,17 @@ func RegisterStore(addr string) {
 		Address:   addr,
 		RPCClient: client,
 		IsLeader:  isLeader,
+	}
+}
+
+func InitHeartbeatLeader() {
+	for {
+		for key, store := range StoreNetwork {
+			var reply string
+			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
+		}
+
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -185,10 +213,6 @@ func SearchMajorityValue(key int) string {
 	return majorityValue
 }
 
-func ReceiveHeartBeat() {
-
-}
-
 func Log() {
 
 }
@@ -208,6 +232,10 @@ func main() {
 	StoreNetwork = make(map[string](structs.Store))
 
 	lis, _ := net.Listen("tcp", ServerAddress)
+
+	if AmILeader {
+		go InitHeartbeatLeader()
+	}
 
 	for {
 		conn, _ := lis.Accept()
