@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/rpc"
 	"os"
@@ -181,7 +182,9 @@ func (s *Store) WriteLog(entry structs.LogEntry, ack *bool) (err error) {
 	return nil
 }
 
-func (s *Store) RegisterWithStore(theirInfo structs.Store, isLeader *bool) (err error) {
+func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (err error) {
+	fmt.Println("Receiving registration request from: ")
+	fmt.Println(theirInfo)
 	client, _ := rpc.Dial("tcp", theirInfo.Address)
 
 	StoreNetwork[theirInfo.Address] = structs.Store{
@@ -201,32 +204,39 @@ func (s *Store) RegisterWithStore(theirInfo structs.Store, isLeader *bool) (err 
 
 func RegisterWithServer() {
 	client, _ := rpc.Dial("tcp", ServerAddress)
-	var listOfStores []structs.Store
-	client.Call("Server.RegisterStore", StorePublicAddress, listOfStores)
+	var listOfStores []structs.StoreInfo
+	client.Call("Server.RegisterStore", StorePublicAddress, &listOfStores)
+
+	fmt.Println("Registering with server succeess, received: ")
+	fmt.Println(listOfStores)
 
 	for _, store := range listOfStores {
 		if store.Address != StorePublicAddress {
-			RegisterStore(store)
+			RegisterStore(store.Address)
+		} else {
+			AmILeader = store.IsLeader
 		}
 	}
 }
 
-func RegisterStore(store structs.Store) {
+func RegisterStore(store string) {
 	var isLeader bool
-	client, _ := rpc.Dial("tcp", store.Address)
+	client, err := rpc.Dial("tcp", store)
 
-	myInfo := structs.Store{
+	myInfo := structs.StoreInfo{
 		Address:  StorePublicAddress,
 		IsLeader: AmILeader,
 	}
 
-	client.Call("Store.RegisterWithStore", myInfo, &isLeader)
+	err = client.Call("Store.RegisterWithStore", myInfo, &isLeader)
 
-	StoreNetwork[store.Address] = structs.Store{
-		Address:   store.Address,
+	StoreNetwork[store] = structs.Store{
+		Address:   store,
 		RPCClient: client,
 		IsLeader:  isLeader,
 	}
+	fmt.Println("this is the store network: ")
+	fmt.Println(StoreNetwork)
 }
 
 ///////////////////////////////////////////
@@ -273,13 +283,15 @@ func main() {
 	StorePublicAddress = os.Args[2]
 	StorePrivateAddress = os.Args[3]
 
-	RegisterWithServer()
-
 	Logs = [](structs.LogEntry){}
 	Dictionary = make(map[int](string))
 	StoreNetwork = make(map[string](structs.Store))
 
-	lis, _ := net.Listen("tcp", ServerAddress)
+	lis, _ := net.Listen("tcp", StorePrivateAddress)
+
+	go rpc.Accept(lis)
+
+	RegisterWithServer()
 
 	for {
 		conn, _ := lis.Accept()

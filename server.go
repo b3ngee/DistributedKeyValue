@@ -25,7 +25,9 @@ var clientMap = make(map[string]*rpc.Client)
 
 var globalStoreID = 1
 
-var storeMap = make(map[int]structs.Store)
+var StoreMap = []structs.Store{}
+
+var StoreAddresses = []structs.StoreInfo{}
 
 // CALL FUNCTIONS
 
@@ -34,12 +36,12 @@ var storeMap = make(map[int]structs.Store)
 //
 // Possible Error Returns:
 // -
-func (server *Server) RegisterClient(clientAddress string, reply *map[int]structs.Store) error {
+func (server *Server) RegisterClient(clientAddress string, reply *[]structs.Store) error {
 
 	cli, _ := rpc.Dial("tcp", clientAddress)
 	clientMap[clientAddress] = cli
 
-	*reply = storeMap
+	*reply = StoreMap
 
 	return nil
 }
@@ -50,21 +52,26 @@ func (server *Server) RegisterClient(clientAddress string, reply *map[int]struct
 //
 // Possible Error Returns:
 // -
-func (server *Server) RegisterStore(storeAddress string, reply *map[int]structs.Store) error {
+func (server *Server) RegisterStore(storeAddress string, reply *[]structs.StoreInfo) error {
+
+	fmt.Println("Currently registering ")
+	fmt.Println(storeAddress)
 
 	cli, _ := rpc.Dial("tcp", storeAddress)
+	if len(StoreMap) == 0 {
 
-	if globalStoreID == 1 {
-
-		storeMap[globalStoreID] = structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: true}
+		StoreMap = append(StoreMap, structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: true})
+		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: true})
 	} else {
 
-		storeMap[globalStoreID] = structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: false}
+		StoreMap = append(StoreMap, structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: false})
+		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: false})
+
 	}
 
-	sendListOfStores()
+	// sendListOfStores()
 
-	*reply = storeMap
+	*reply = StoreAddresses
 
 	return nil
 }
@@ -73,14 +80,14 @@ func (server *Server) RegisterStore(storeAddress string, reply *map[int]structs.
 
 // sendListOfStores updates the other stores map when a new store registers.
 
-func sendListOfStores() {
+// func sendListOfStores() {
+// 	fmt.Println("in send list of stores")
+// 	for _, value := range StoreMap {
 
-	for _, value := range storeMap {
-
-		var reply string
-		value.RPCClient.Call("Store.UpdateStoreMap", storeMap, reply)
-	}
-}
+// 		var reply string
+// 		// value.RPCClient.Call("Store.UpdateStoreMap", StoreMap, &reply)
+// 	}
+// }
 
 func main() {
 
@@ -92,5 +99,4 @@ func main() {
 	fmt.Println("Server is now listening on address [" + os.Args[1] + "]")
 
 	rpc.Accept(lis)
-
 }
