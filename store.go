@@ -6,6 +6,7 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"time"
 
 	"./errors"
 	"./structs"
@@ -26,6 +27,9 @@ var ServerAddress string
 
 // Leader's address
 var LeaderAddress string
+
+// Leader's heartbeat (not used by the leader)
+var LeaderHeartbeat time.Time
 
 // Am I leader?
 var AmILeader bool
@@ -199,6 +203,19 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 	return nil
 }
 
+func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err error) {
+	if LeaderHeartbeat.IsZero() {
+		LeaderHeartbeat = time.Now()
+	} else {
+		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
+			RequestNewLeader()
+		} else {
+			LeaderHeartbeat = time.Now()
+		}
+	}
+	return nil
+}
+
 ///////////////////////////////////////////
 //			   Outgoing RPC		         //
 ///////////////////////////////////////////
@@ -239,6 +256,17 @@ func RegisterStore(store string) {
 	}
 	fmt.Println("this is the store network: ")
 	fmt.Println(StoreNetwork)
+}
+
+func InitHeartbeatLeader() {
+	for {
+		for key, store := range StoreNetwork {
+			var reply string
+			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
 }
 
 ///////////////////////////////////////////
@@ -336,6 +364,10 @@ func main() {
 	go rpc.Accept(lis)
 
 	RegisterWithServer()
+
+	if AmILeader {
+		go InitHeartbeatLeader()
+	}
 
 	for {
 		conn, _ := lis.Accept()
