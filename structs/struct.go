@@ -19,3 +19,10 @@ type ACK struct {
 	Value        string
 	Error        error
 }
+
+type LogEntry struct {
+	Index       int
+	Key         int
+	Value       string
+	IsCommitted bool
+}
