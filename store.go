@@ -112,7 +112,13 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 	return errors.KeyDoesNotExistError(key)
 }
 
+// Write
+// throws DisconnectedError
+
 func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
 	if AmILeader {
 		var numAcksUncommitted int
 		var numAcksCommitted int
@@ -165,11 +171,13 @@ func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error
 	} else {
 		return errors.NonLeaderWriteError(LeaderAddress)
 	}
+	ack.Acknowledged = true
 	return nil
 }
 
 func (s *Store) WriteLog(entry structs.LogEntry, ack *bool) (err error) {
 	Log(entry)
+	*ack = true
 	return nil
 }
 
