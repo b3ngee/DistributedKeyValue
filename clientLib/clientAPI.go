@@ -31,18 +31,33 @@ var	clientPrivIP = os.Args[3]
 var storeMap = make(map[int]structs.Store)
 
 
-type ClientFileSystem struct {
-	server          	 string
+type ClientSystem struct {
+	server       string
 }
 
 
 type Client interface {
 	
-	// Reads a value from a key in a store
-	Read(key int, value *string)
+	// Consistent Read
+    // If leader, finds the majority answer from across network and return to client
+    // If not let client know to re-read from leader 
+    // throws 	NonLeaderReadError 
+    //			KeyDoesNotExistError
+    //			DisconnectedError
+	ConsistentRead(key int, value *string) (err error) 
 
-	// Writes a value into a key in a leader store
-	Write(key int, value *string)
+	// Default Read
+    // If leader respond with value, if not let client know to re-read from leader 
+    // throws 	NonLeaderReadError 
+    //			KeyDoesNotExistError
+    //			DisconnectedError
+    DefaultRead(key int, value *string) (err error)
+
+    // Fast Read
+    // Returns the value regardless of if it is leader or follower
+    // throws 	KeyDoesNotExistError
+    //			DisconnectedError
+    FastRead(key int, value *string) (err error) 
 
 }
 
@@ -59,37 +74,64 @@ func ConnectServer(serverAddr string)(cli Client, err error){
 
 	var replyStoreMap = make(map[int]structs.Store)
 
-	err = serverRPC.Call("Server.RegisterClient", serverPubIP, &replyStoreMap)
+	err = serverRPC.Call("Server.RegisterClient", clientPubIP, &replyStoreMap)
 	HandleError(err)
 	fmt.Println("Client has successfully connected to the server")
 
 	storeMap = replyStoreMap
 
-	clientFS := ClientFileSystem{server: serverAddr}
+	clientSys := ClientSystem{server: serverAddr}
 
-	return clientFS, err
+	return clientSys, err
 }
 
 // Writes to a store
-func (cfs ClientFileSystem)Write(key int, value *string){
+func (cs ClientSystem)Write(key int, value *string)(err error){
 
+
+
+return nil
 
 }
 
 
 
-// Reads from a store
-func (cfs ClientFileSystem)Read(key int, value *string){
+// ConsistentRead from a store
+func (cs ClientSystem)ConsistentRead(key int, value *string)(err error){
 
 	var storeMapLength = len(storeMap)
-
 	var rand = random(0, storeMapLength)
 
 	randomStore := storeMap[rand]
-
 	randomStore.RPCClient.Call("Store.ConsistentRead", key, &value)
 
+	return nil
 
+}
+
+// DefaultRead from a store
+func (cs ClientSystem)DefaultRead(key int, value *string)(err error){
+
+	var storeMapLength = len(storeMap)
+	var rand = random(0, storeMapLength)
+
+	randomStore := storeMap[rand]
+	randomStore.RPCClient.Call("Store.DefaultRead", key, &value)
+
+	return nil
+
+}
+
+// FastRead from a store
+func (cs ClientSystem)FastRead(key int, value *string)(err error){
+
+	var storeMapLength = len(storeMap)
+	var rand = random(0, storeMapLength)
+
+	randomStore := storeMap[rand]
+	randomStore.RPCClient.Call("Store.FastRead", key, &value)
+
+	return nil
 
 }
 
@@ -99,6 +141,7 @@ func UpdateStoreMap(){
 
 
 
+// returns a random number from a range of [min, max]
 func random(min, max int) int {
     rand.Seed(time.Now().Unix())
     return rand.Intn(max - min) + min
@@ -119,6 +162,8 @@ func main() {
 	}
 }
 
+
+//handles errors
 func HandleError(err error) {
 	if err != nil {
 		fmt.Println(err)
