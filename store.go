@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/rpc"
 	"os"
 
-	"./structs"
 	"./errors"
+	"./structs"
 )
 
 ///////////////////////////////////////////
@@ -25,7 +26,7 @@ var ServerAddress string
 // Leader's address
 var LeaderAddress string
 
-// Am I leader? 
+// Am I leader?
 var AmILeader bool
 
 // Am I connected?
@@ -37,6 +38,9 @@ var StorePublicAddress string
 // My private address
 var StorePrivateAddress string
 
+// Logs
+var Logs []structs.LogEntry
+
 ///////////////////////////////////////////
 //			   Incoming RPC		         //
 ///////////////////////////////////////////
@@ -44,18 +48,18 @@ type Store int
 
 // Consistent Read
 // If leader, finds the majority answer from across network and return to client
-// If not let client know to re-read from leader 
+// If not let client know to re-read from leader
 //
-// throws 	NonLeaderReadError 
+// throws 	NonLeaderReadError
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) ConsistentRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
-		if v, exists := Dictionary[key]; exists {
+		if _, exists := Dictionary[key]; exists {
 			majorityValue := SearchMajorityValue(key)
 			*value = majorityValue
 			return nil
@@ -64,23 +68,23 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 			return errors.KeyDoesNotExistError(key)
 		}
 	}
-	
+
 	return errors.NonLeaderReadError(LeaderAddress)
 }
 
 // Default Read
-// If leader respond with value, if not let client know to re-read from leader 
+// If leader respond with value, if not let client know to re-read from leader
 //
-// throws 	NonLeaderReadError 
+// throws 	NonLeaderReadError
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) DefaultRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
-		if v, exists := Dictionary[key]; exists {
+		if _, exists := Dictionary[key]; exists {
 			*value = Dictionary[key]
 			return nil
 		} else {
@@ -98,10 +102,10 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 //			DisconnectedError
 func (s *Store) FastRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return DisconnectedError(StorePublicAddress)
+		return errors.DisconnectedError(StorePublicAddress)
 	}
 
-	if v, exists := Dictionary[key]; exists {
+	if _, exists := Dictionary[key]; exists {
 		*value = Dictionary[key]
 		return nil
 	}
@@ -109,21 +113,89 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 	return errors.KeyDoesNotExistError(key)
 }
 
+// Write
+// throws DisconnectedError
+
 func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
+	if AmILeader {
+		var numAcksUncommitted int
+		var numAcksCommitted int
+
+		entry := structs.LogEntry{
+			Key:         request.Key,
+			Value:       request.Value,
+			IsCommitted: false,
+		}
+
+		Log(entry)
+
+		for _, store := range StoreNetwork {
+			var ackUncommitted bool
+
+			store.RPCClient.Call("Store.WriteLog", entry, &ackUncommitted)
+			if ackUncommitted {
+				numAcksUncommitted++
+			} else {
+				go func() {
+					for !ackUncommitted {
+						store.RPCClient.Call("Store.WriteLog", entry, &ackUncommitted)
+					}
+					numAcksUncommitted++
+				}()
+			}
+		}
+
+		if numAcksUncommitted > len(StoreNetwork)/2 {
+			var ackCommitted bool
+			entry.IsCommitted = true
+
+			Log(entry)
+			Dictionary[request.Key] = request.Value
+
+			for _, store := range StoreNetwork {
+				store.RPCClient.Call("Store.WriteLog", entry, &ackCommitted)
+				if ackCommitted {
+					numAcksCommitted++
+				} else {
+					go func() {
+						for !ackCommitted {
+							store.RPCClient.Call("Store.WriteLog", entry, &ackCommitted)
+						}
+						numAcksCommitted++
+					}()
+				}
+			}
+		}
+	} else {
+		return errors.NonLeaderWriteError(LeaderAddress)
+	}
+	ack.Acknowledged = true
 	return nil
 }
 
-func (s *Store) RegisterWithStore(storeAddr string, isLeader *bool) (err error) {
-	client, _ := rpc.Dial("tcp", storeAddr)
+func (s *Store) WriteLog(entry structs.LogEntry, ack *bool) (err error) {
+	Log(entry)
+	*ack = true
+	return nil
+}
 
-	storeNetwork[storeAddr] = structs.Store{
-		Address:   storeAddr,
+func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (err error) {
+	fmt.Println("Receiving registration request from: ")
+	fmt.Println(theirInfo)
+	client, _ := rpc.Dial("tcp", theirInfo.Address)
+
+	StoreNetwork[theirInfo.Address] = structs.Store{
+		Address:   theirInfo.Address,
 		RPCClient: client,
-		IsLeader:  AmILeader,
+		IsLeader:  theirInfo.IsLeader,
 	}
 
+	// TODO set isLeader to true if you are a leader
 	*isLeader = AmILeader
-	return nil 
+	return nil
 }
 
 ///////////////////////////////////////////
@@ -132,27 +204,39 @@ func (s *Store) RegisterWithStore(storeAddr string, isLeader *bool) (err error) 
 
 func RegisterWithServer() {
 	client, _ := rpc.Dial("tcp", ServerAddress)
-	var listOfStores []structs.Store
-	client.Call("Server.RegisterStore", StorePublicAddress, listOfStores)
+	var listOfStores []structs.StoreInfo
+	client.Call("Server.RegisterStore", StorePublicAddress, &listOfStores)
 
-	for _, storeAddr := range listOfStores {
-		if storeAddr.Address != StorePublicAddress {
-			RegisterStore(storeAddr.Address)
+	fmt.Println("Registering with server succeess, received: ")
+	fmt.Println(listOfStores)
+
+	for _, store := range listOfStores {
+		if store.Address != StorePublicAddress {
+			RegisterStore(store.Address)
+		} else {
+			AmILeader = store.IsLeader
 		}
 	}
 }
 
-func RegisterStore(addr string) {
+func RegisterStore(store string) {
 	var isLeader bool
-	client, _ := rpc.Dial("tcp", addr)
+	client, err := rpc.Dial("tcp", store)
 
-	client.Call("Store.RegisterWithStore", StorePublicAddress, &isLeader)
+	myInfo := structs.StoreInfo{
+		Address:  StorePublicAddress,
+		IsLeader: AmILeader,
+	}
 
-	storeNetwork[addr] = structs.Store{
-		Address:   addr,
+	err = client.Call("Store.RegisterWithStore", myInfo, &isLeader)
+
+	StoreNetwork[store] = structs.Store{
+		Address:   store,
 		RPCClient: client,
 		IsLeader:  isLeader,
 	}
+	fmt.Println("this is the store network: ")
+	fmt.Println(StoreNetwork)
 }
 
 ///////////////////////////////////////////
@@ -185,12 +269,9 @@ func SearchMajorityValue(key int) string {
 	return majorityValue
 }
 
-func ReceiveHeartBeat() {
-
-}
-
-func Log() {
-
+func Log(entry structs.LogEntry) {
+	entry.Index = len(Logs)
+	Logs = append(Logs, entry)
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]
@@ -202,12 +283,15 @@ func main() {
 	StorePublicAddress = os.Args[2]
 	StorePrivateAddress = os.Args[3]
 
-	RegisterWithServer()
-
+	Logs = [](structs.LogEntry){}
 	Dictionary = make(map[int](string))
 	StoreNetwork = make(map[string](structs.Store))
 
-	lis, _ := net.Listen("tcp", ServerAddress)
+	lis, _ := net.Listen("tcp", StorePrivateAddress)
+
+	go rpc.Accept(lis)
+
+	RegisterWithServer()
 
 	for {
 		conn, _ := lis.Accept()
