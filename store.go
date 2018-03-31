@@ -5,7 +5,10 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+<<<<<<< HEAD
 	"strconv"
+=======
+>>>>>>> b5ebd3a5b0a426e5d1694e0f7bb4a7804ee4f570
 	"time"
 
 	"./errors"
@@ -271,6 +274,17 @@ func InitHeartbeatLeader() {
 	}
 }
 
+func InitHeartbeatLeader() {
+	for {
+		for key, store := range StoreNetwork {
+			var reply string
+			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
 ///////////////////////////////////////////
 //			  Helper Methods		     //
 ///////////////////////////////////////////
@@ -362,6 +376,10 @@ func main() {
 	go rpc.Accept(lis)
 
 	RegisterWithServer()
+
+	if AmILeader {
+		go InitHeartbeatLeader()
+	}
 
 	if AmILeader {
 		go InitHeartbeatLeader()
