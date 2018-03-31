@@ -38,16 +38,78 @@ var StorePublicAddress string
 var StorePrivateAddress string
 
 // Logs
-var Logs [](structs.LogEntry)
+var Logs []structs.LogEntry
 
 ///////////////////////////////////////////
 //			   Incoming RPC		         //
 ///////////////////////////////////////////
-
 type Store int
 
-func (s *Store) Read(key int, value *string) (err error) {
-	return nil
+// Consistent Read
+// If leader, finds the majority answer from across network and return to client
+// If not let client know to re-read from leader
+//
+// throws 	NonLeaderReadError
+//			KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) ConsistentRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
+
+	if AmILeader {
+		if _, exists := Dictionary[key]; exists {
+			majorityValue := SearchMajorityValue(key)
+			*value = majorityValue
+			return nil
+			// [?] Do we need to update the network with majorityValue?
+		} else {
+			return errors.KeyDoesNotExistError(key)
+		}
+	}
+
+	return errors.NonLeaderReadError(LeaderAddress)
+}
+
+// Default Read
+// If leader respond with value, if not let client know to re-read from leader
+//
+// throws 	NonLeaderReadError
+//			KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) DefaultRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
+
+	if AmILeader {
+		if _, exists := Dictionary[key]; exists {
+			*value = Dictionary[key]
+			return nil
+		} else {
+			return errors.KeyDoesNotExistError(key)
+		}
+	}
+
+	return errors.NonLeaderReadError(LeaderAddress)
+}
+
+// Fast Read
+// Returns the value regardless of if it is leader or follower
+//
+// throws 	KeyDoesNotExistError
+//			DisconnectedError
+func (s *Store) FastRead(key int, value *string) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
+
+	if _, exists := Dictionary[key]; exists {
+		*value = Dictionary[key]
+		return nil
+	}
+
+	return errors.KeyDoesNotExistError(key)
 }
 
 func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error) {
@@ -162,6 +224,32 @@ func RegisterStore(store structs.Store) {
 ///////////////////////////////////////////
 //			  Helper Methods		     //
 ///////////////////////////////////////////
+func SearchMajorityValue(key int) string {
+	valueArray := make(map[string]int)
+	for _, store := range StoreNetwork {
+		var value string
+		store.RPCClient.Call("Store.FastRead", key, &value)
+
+		if value != "" {
+			if count, exists := valueArray[value]; exists {
+				valueArray[value] = count + 1
+			} else {
+				valueArray[value] = 1
+			}
+		}
+	}
+
+	tempMaxCount := 0
+	majorityValue := ""
+	for k, v := range valueArray {
+		if v > tempMaxCount {
+			v = tempMaxCount
+			majorityValue = k
+		}
+	}
+
+	return majorityValue
+}
 
 func Log(entry structs.LogEntry) {
 	entry.Index = len(Logs)
