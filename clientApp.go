@@ -30,13 +30,21 @@ func main() {
 	fmt.Println("address: ", address)
 
 	userClient.Write(address, 5, "HELLO WORLD")
+	userClient.Write(address, 10, "Yoony WORLD")
+	userClient.Write(address, 1, "Ben WORLD")
 
-	v1, e1 := userClient.FastRead(address, 5)
-	fmt.Println("first: ", v1, e1)
-	v2, e2 := userClient.DefaultRead(address, 5)
-	fmt.Println("second: ", v2, e2)
-	v3, e3 := userClient.ConsistentRead(address, 5)
-	fmt.Println("third: ", v3, e3)
+	time.Sleep(2 * time.Second)
+
+	v1, e1 := userClient.FastRead(address, 1)
+	fmt.Println("fast read : ", v1, e1)
+	v2, e2 := userClient.DefaultRead(address, 1)
+	fmt.Println("default : ", v2, e2)
+	v3, e3 := userClient.ConsistentRead(address, 1)
+	fmt.Println("consistent : ", v3, e3)
+
+	userClient.Write(address, 1, "Kevin WORLD")
+	v4, e4 := userClient.FastRead(address, 1)
+	fmt.Println("fast read: ", v4, e4)
 }
 
 ///////////////////////////////////////////

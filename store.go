@@ -207,6 +207,13 @@ func (s *Store) UpdateDictionary(entry structs.LogEntry, ack *bool) (err error) 
 	return nil
 }
 
+func (s *Store) UpdateConfig(addr string, reply *string) (err error) {
+	delete(StoreNetwork, addr)
+	fmt.Println("Updated Network: ")
+	fmt.Println(StoreNetwork)
+	return nil
+}
+
 func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (err error) {
 	fmt.Println("Receiving registration request from: ")
 	fmt.Println(theirInfo)
@@ -224,12 +231,16 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 }
 
 func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err error) {
+	if !AmIConnected {
+		return errors.DisconnectedError(StorePublicAddress)
+	}
 	if LeaderHeartbeat.IsZero() {
 		LeaderHeartbeat = time.Now()
 	} else {
 		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
 			LeaderAddress = ""
 			LeaderHeartbeat = time.Time{}
+			fmt.Println("Aout to start election")
 			ElectNewLeader()
 		} else {
 			LeaderHeartbeat = time.Now()
@@ -285,9 +296,18 @@ func RegisterStore(store string) {
 
 func InitHeartbeatLeader() {
 	for {
-		for key, store := range StoreNetwork {
+		for _, store := range StoreNetwork {
 			var reply string
-			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
+			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
+			if err != nil {
+				fmt.Println("deleting this guy: ", store.Address)
+				delete(StoreNetwork, store.Address)
+				for _, str := range StoreNetwork {
+					str.RPCClient.Call("Store.UpdateConfig", store.Address, &reply)
+				}
+				fmt.Println("Updated Config: ")
+				fmt.Println(StoreNetwork)
+			}
 		}
 
 		time.Sleep(2 * time.Second)
@@ -327,6 +347,8 @@ func SearchMajorityValue(key int) string {
 func Log(entry structs.LogEntry) {
 	entry.Index = len(Logs)
 	Logs = append(Logs, entry)
+	fmt.Println("This is current log: ")
+	fmt.Println(Logs)
 }
 
 func ElectNewLeader() {
