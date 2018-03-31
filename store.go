@@ -5,10 +5,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
-<<<<<<< HEAD
 	"strconv"
-=======
->>>>>>> b5ebd3a5b0a426e5d1694e0f7bb4a7804ee4f570
 	"time"
 
 	"./errors"
@@ -376,10 +373,6 @@ func main() {
 	go rpc.Accept(lis)
 
 	RegisterWithServer()
-
-	if AmILeader {
-		go InitHeartbeatLeader()
-	}
 
 	if AmILeader {
 		go InitHeartbeatLeader()
