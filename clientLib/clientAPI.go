@@ -27,9 +27,6 @@ type ClientSystem struct {
 type Client interface {
 
 	// Write
-	// Returns nil
-	// throws 	KeyDoesNotExistError
-	//			DisconnectedError
 	Write(key int, value string, addr string) (err error)
 
 	// Consistent Read
