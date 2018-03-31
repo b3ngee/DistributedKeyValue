@@ -224,6 +224,24 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 	return nil
 }
 
+// UpdateNewStoreLog is when another store requests from a leader to get an updated log.
+// Leader will add the requesting store to its StoreNetwork.
+func (s *Store) UpdateNewStoreLog(storeAddr string, logEntries *[]structs.LogEntry) (err error) {
+	fmt.Println("Receiving update log request from: ")
+	fmt.Println(storeAddr)
+
+	client, _ := rpc.Dial("tcp", storeAddr)
+
+	StoreNetwork[storeAddr] = structs.Store{
+		Address:   storeAddr,
+		RPCClient: client,
+		IsLeader:  false,
+	}
+
+	*logEntries = Logs
+	return nil
+}
+
 // ReceiveHeartbeatFromLeader is a heartbeat signal from the leader to indicate that it is still up.
 // If the heartbeat goes over the expected threshhold, there will be a re-electon for a new leader.
 // Then, delete the leader from StoreNetwork.
@@ -288,23 +306,51 @@ func (s *Store) UpdateLeader(leaderAddr string, ack *bool) (err error) {
 
 func RegisterWithServer() {
 	client, _ := rpc.Dial("tcp", ServerAddress)
+
+	var leaderStore structs.StoreInfo
 	var listOfStores []structs.StoreInfo
-	client.Call("Server.RegisterStore", StorePublicAddress, &listOfStores)
+	var logsToUpdate []structs.LogEntry
 
-	fmt.Println("Registering with server succeess, received: ")
-	fmt.Println(listOfStores)
-	AmIConnected = true
+	client.Call("Server.RegisterStoreFirstPhase", StorePublicAddress, &leaderStore)
 
-	for _, store := range listOfStores {
-		if store.IsLeader {
-			LeaderAddress = store.Address
+	if leaderStore.Address == StorePublicAddress {
+
+		fmt.Println("Registering with the server successful, you are the leader!")
+
+		LeaderAddress = leaderStore.Address
+
+		AmILeader = leaderStore.IsLeader
+
+	} else {
+
+		leaderClient, _ := rpc.Dial("tcp", leaderStore.Address)
+
+		StoreNetwork[leaderStore.Address] = structs.Store{
+			Address:   leaderStore.Address,
+			RPCClient: leaderClient,
+			IsLeader:  leaderStore.IsLeader,
 		}
-		if store.Address != StorePublicAddress {
-			RegisterStore(store.Address)
-		} else {
-			AmILeader = store.IsLeader
+
+		leaderClient.Call("Store.UpdateNewStoreLog", StorePublicAddress, &logsToUpdate)
+		Logs = logsToUpdate
+
+		client.Call("Server.RegisterStoreSecondPhase", StorePublicAddress, &listOfStores)
+
+		fmt.Println("Registering with server succeess, received: ")
+		fmt.Println(listOfStores)
+
+		for _, store := range listOfStores {
+			if store.IsLeader {
+				LeaderAddress = store.Address
+			}
+			if store.Address != StorePublicAddress && !store.IsLeader {
+				RegisterStore(store.Address)
+			}
 		}
+
 	}
+
+	AmIConnected = true
 }
 
 func RegisterStore(store string) {
