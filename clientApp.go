@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"./clientLib"
 )
@@ -18,10 +19,15 @@ func main() {
 
 	client, _ := clientLib.ConnectToServer(serverPubIP, clientPubIP)
 
+	leaderStore := "127.0.0.1:8001"
+	client.Write(5, "HELLO WORLD", leaderStore)
+
+	time.Sleep(2 * time.Second)
+
 	v1, e1 := client.FastRead(5)
-	fmt.Println("first: ", v1, e1)
+	fmt.Println("FastRead: ", v1, e1)
 	v2, e2 := client.DefaultRead(5)
-	fmt.Println("second: ", v2, e2)
+	fmt.Println("DefaultRead: ", v2, e2)
 	v3, e3 := client.ConsistentRead(5)
-	fmt.Println("third: ", v3, e3)
+	fmt.Println("ConsistentRead: ", v3, e3)
 }

@@ -26,6 +26,12 @@ type ClientSystem struct {
 
 type Client interface {
 
+	// Write
+	// Returns nil
+	// throws 	KeyDoesNotExistError
+	//			DisconnectedError
+	Write(key int, value string, addr string) (err error)
+
 	// Consistent Read
 	// If leader, finds the majority answer from across network and return to client
 	// If not let client know to re-read from leader
@@ -68,9 +74,20 @@ func ConnectToServer(serverPubIP string, clientPubIP string) (cli Client, err er
 }
 
 // Writes to a store
-func (cs ClientSystem) Write(key int, value *string) (err error) {
+func (cs ClientSystem) Write(key int, value string, storeAddr string) (err error) {
 
-	return nil
+	var reply bool
+	client, _ := rpc.Dial("tcp", storeAddr)
+	writeReq := structs.WriteRequest{
+		Key:   key,
+		Value: value,
+	}
+	err = client.Call("Store.Write", writeReq, &reply)
+	if err != nil {
+		return err
+	}
+
+	return err
 }
 
 // ConsistentRead from a store
