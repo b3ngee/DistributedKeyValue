@@ -21,8 +21,6 @@ import (
 
 type Server int
 
-var clientMap = make(map[string]*rpc.Client)
-
 var globalStoreID = 1
 
 var StoreMap = []structs.Store{}
@@ -37,9 +35,6 @@ var StoreAddresses = []structs.StoreInfo{}
 // Possible Error Returns:
 // -
 func (server *Server) RegisterClient(clientAddress string, reply *[]structs.StoreInfo) error {
-
-	cli, _ := rpc.Dial("tcp", clientAddress)
-	clientMap[clientAddress] = cli
 
 	*reply = StoreAddresses
 

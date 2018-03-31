@@ -208,7 +208,9 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err
 		LeaderHeartbeat = time.Now()
 	} else {
 		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
-			RequestNewLeader()
+			LeaderAddress = ""
+			LeaderHeartbeat = time.Time{}
+			ElectNewLeader()
 		} else {
 			LeaderHeartbeat = time.Now()
 		}
@@ -297,10 +299,6 @@ func SearchMajorityValue(key int) string {
 	}
 
 	return majorityValue
-}
-
-func ReceiveHeartBeat() {
-
 }
 
 func Log(entry structs.LogEntry) {
