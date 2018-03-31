@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"strconv"
 
 	"./errors"
 	"./structs"
@@ -65,7 +66,7 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 			return nil
 			// [?] Do we need to update the network with majorityValue?
 		} else {
-			return errors.KeyDoesNotExistError(key)
+			return errors.KeyDoesNotExistError(strconv.Itoa(key))
 		}
 	}
 
@@ -88,7 +89,7 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 			*value = Dictionary[key]
 			return nil
 		} else {
-			return errors.KeyDoesNotExistError(key)
+			return errors.KeyDoesNotExistError(strconv.Itoa(key))
 		}
 	}
 
@@ -104,13 +105,13 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 	if !AmIConnected {
 		return errors.DisconnectedError(StorePublicAddress)
 	}
-
+	fmt.Println("Iamhere")
 	if _, exists := Dictionary[key]; exists {
 		*value = Dictionary[key]
 		return nil
 	}
-
-	return errors.KeyDoesNotExistError(key)
+	fmt.Println("cannot find key")
+	return errors.KeyDoesNotExistError(strconv.Itoa(key))
 }
 
 // Write
@@ -209,6 +210,7 @@ func RegisterWithServer() {
 
 	fmt.Println("Registering with server succeess, received: ")
 	fmt.Println(listOfStores)
+	AmIConnected = true
 
 	for _, store := range listOfStores {
 		if store.Address != StorePublicAddress {
@@ -221,14 +223,14 @@ func RegisterWithServer() {
 
 func RegisterStore(store string) {
 	var isLeader bool
-	client, err := rpc.Dial("tcp", store)
+	client, _ := rpc.Dial("tcp", store)
 
 	myInfo := structs.StoreInfo{
 		Address:  StorePublicAddress,
 		IsLeader: AmILeader,
 	}
 
-	err = client.Call("Store.RegisterWithStore", myInfo, &isLeader)
+	client.Call("Store.RegisterWithStore", myInfo, &isLeader)
 
 	StoreNetwork[store] = structs.Store{
 		Address:   store,
@@ -269,9 +271,51 @@ func SearchMajorityValue(key int) string {
 	return majorityValue
 }
 
+func ReceiveHeartBeat() {
+
+}
+
 func Log(entry structs.LogEntry) {
 	entry.Index = len(Logs)
 	Logs = append(Logs, entry)
+}
+
+func ElectNewLeader() {
+	var numberOfVotes int
+	for _, store := range StoreNetwork {
+		candidateInfo := structs.CandidateInfo{
+			LogLength:         len(Logs),
+			NumberOfCommitted: ComputeCommittedLogs(),
+		}
+
+		var vote int
+		if LeaderAddress == "" {
+			store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
+		} else {
+			break
+		}
+
+		numberOfVotes = numberOfVotes + vote
+
+		if numberOfVotes >= len(StoreNetwork)/2 && LeaderAddress == "" {
+			LeaderAddress = StorePublicAddress
+			AmILeader = true
+			EstablishLeaderRole()
+
+			break
+		}
+	}
+}
+
+func EstablishLeaderRole() {
+	for _, store := range StoreNetwork {
+		var ack bool
+		store.RPCClient.Call("Store.UpdateLeader", StorePublicAddress, &ack)
+	}
+}
+
+func ComputeCommittedLogs() int {
+	return 0
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]

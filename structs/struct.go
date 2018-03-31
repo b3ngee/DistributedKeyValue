@@ -17,7 +17,11 @@ type ACK struct {
 	Acknowledged bool
 	Key          int
 	Value        string
-	Error        error
+}
+
+type CandidateInfo struct {
+	LogLength         int
+	NumberOfCommitted int
 }
 
 type LogEntry struct {

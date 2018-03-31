@@ -21,7 +21,7 @@ func (e NonLeaderReadError) Error() string {
 type KeyDoesNotExistError string
 
 func (e KeyDoesNotExistError) Error() string {
-	return fmt.Sprintf("Key [%v] does not exist in database ", e)
+	return fmt.Sprintf("Key [%s] does not exist in database ", string(e))
 }
 
 // Thrown when a store is disconnected

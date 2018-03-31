@@ -36,12 +36,12 @@ var StoreAddresses = []structs.StoreInfo{}
 //
 // Possible Error Returns:
 // -
-func (server *Server) RegisterClient(clientAddress string, reply *[]structs.Store) error {
+func (server *Server) RegisterClient(clientAddress string, reply *[]structs.StoreInfo) error {
 
 	cli, _ := rpc.Dial("tcp", clientAddress)
 	clientMap[clientAddress] = cli
 
-	*reply = StoreMap
+	*reply = StoreAddresses
 
 	return nil
 }
