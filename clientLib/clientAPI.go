@@ -12,6 +12,7 @@ package main
 
 import (
 	"../structs"
+	"../errors"
 	"fmt"
 	"net"
 	"net/rpc"
@@ -44,20 +45,20 @@ type Client interface {
     // throws 	NonLeaderReadError 
     //			KeyDoesNotExistError
     //			DisconnectedError
-	ConsistentRead(key int, value *string) (err error) 
+	ConsistentRead(key int) (value string, err error) 
 
 	// Default Read
     // If leader respond with value, if not let client know to re-read from leader 
     // throws 	NonLeaderReadError 
     //			KeyDoesNotExistError
     //			DisconnectedError
-    DefaultRead(key int, value *string) (err error)
+    DefaultRead(key int) (value string, err error)
 
     // Fast Read
     // Returns the value regardless of if it is leader or follower
     // throws 	KeyDoesNotExistError
     //			DisconnectedError
-    FastRead(key int, value *string) (err error) 
+    FastRead(key int) (value string, err error) 
 
 }
 
@@ -97,41 +98,52 @@ return nil
 
 
 // ConsistentRead from a store
-func (cs ClientSystem)ConsistentRead(key int, value *string)(err error){
+func (cs ClientSystem)ConsistentRead(key int)(value string, err error){
 
 	var storeMapLength = len(storeMap)
 	var rand = random(0, storeMapLength)
 
 	randomStore := storeMap[rand]
-	randomStore.RPCClient.Call("Store.ConsistentRead", key, &value)
+	err = randomStore.RPCClient.Call("Store.ConsistentRead", key, &value)
 
-	return nil
+	if err != nil {
+		return "", err
+	}
+
+	return value, err
 
 }
 
 // DefaultRead from a store
-func (cs ClientSystem)DefaultRead(key int, value *string)(err error){
+func (cs ClientSystem)DefaultRead(key int)(value string,err error){
 
-	var storeMapLength = len(storeMap)
-	var rand = random(0, storeMapLength)
 
-	randomStore := storeMap[rand]
-	randomStore.RPCClient.Call("Store.DefaultRead", key, &value)
+	for _,store := range storeMap{
+		if store.IsLeader == true {
+			store.RPCClient.Call("Store.DefaultRead", key, &value)
+			return value, nil
+		} else{
+			return "", errors.NonLeaderReadError
+		}
+	}
 
-	return nil
+	return "", errors.NonLeaderReadError
 
 }
 
 // FastRead from a store
-func (cs ClientSystem)FastRead(key int, value *string)(err error){
+func (cs ClientSystem)FastRead(key int)(value string,err error){
 
-	var storeMapLength = len(storeMap)
-	var rand = random(0, storeMapLength)
+	for _,store := range storeMap{
+		if store.IsLeader == true {
+			store.RPCClient.Call("Store.DefaultRead", key, &value)
+			return value, nil
+		} else{
+			return "", errors.NonLeaderReadError
+		}
+	}
 
-	randomStore := storeMap[rand]
-	randomStore.RPCClient.Call("Store.FastRead", key, &value)
-
-	return nil
+	return "", errors.NonLeaderReadError
 
 }
 
