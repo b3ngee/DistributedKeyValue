@@ -39,24 +39,43 @@ func (server *Server) RegisterClient(clientAddress string, reply *[]structs.Stor
 	return nil
 }
 
-// RegisterStore registers the store node to the server with the store address.
+// RegisterStoreFirstPhase registers the store node to the server with the store address.
+// The server will reply with the leader in the store map for the store to get an updated log from.
+//
+// Possible Error Returns:
+// -
+func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *structs.StoreInfo) error {
+
+	fmt.Println("New Incoming Store: ")
+	fmt.Println(storeAddress)
+
+	if len(StoreAddresses) == 0 {
+		newLeader := structs.StoreInfo{Address: storeAddress, IsLeader: true}
+		StoreAddresses = append(StoreAddresses, newLeader)
+		*reply = newLeader
+	} else {
+		for index, store := range StoreAddresses {
+			if store.IsLeader {
+				*reply = store
+			}
+		}
+	}
+
+	return nil
+}
+
+// RegisterStoreSecondPhase registers the store node to the server with the store address.
 // The server will reply with the store map of all the other stores.
 // Then, it will update the store map of all the clients that are connected.
 //
 // Possible Error Returns:
 // -
-func (server *Server) RegisterStore(storeAddress string, reply *[]structs.StoreInfo) error {
+func (server *Server) RegisterStoreSecondPhase(storeAddress string, reply *[]structs.StoreInfo) error {
 
-	fmt.Println("Currently registering: ")
+	fmt.Println("Store is up to date with the logs, currently registering: ")
 	fmt.Println(storeAddress)
 
-	if len(StoreAddresses) == 0 {
-		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: true})
-	} else {
-		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: false})
-	}
-
-	// sendListOfStores()
+	StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: false})
 
 	*reply = StoreAddresses
 
