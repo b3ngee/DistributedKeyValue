@@ -271,17 +271,6 @@ func InitHeartbeatLeader() {
 	}
 }
 
-func InitHeartbeatLeader() {
-	for {
-		for key, store := range StoreNetwork {
-			var reply string
-			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
-		}
-
-		time.Sleep(2 * time.Second)
-	}
-}
-
 ///////////////////////////////////////////
 //			  Helper Methods		     //
 ///////////////////////////////////////////
