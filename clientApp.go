@@ -29,7 +29,7 @@ func main() {
 
 	fmt.Println("address: ", address)
 
-	userClient.Write(5, "HELLO WORLD", address)
+	userClient.Write(address, 5, "HELLO WORLD")
 
 	v1, e1 := userClient.FastRead(address, 5)
 	fmt.Println("first: ", v1, e1)
