@@ -34,9 +34,6 @@ var StoreAddresses = []structs.StoreInfo{}
 // -
 func (server *Server) RegisterClient(clientAddress string, reply *[]structs.StoreInfo) error {
 
-	cli, _ := rpc.Dial("tcp", clientAddress)
-	clientMap[clientAddress] = cli
-
 	*reply = StoreAddresses
 
 	return nil
