@@ -54,7 +54,7 @@ func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *struct
 		StoreAddresses = append(StoreAddresses, newLeader)
 		*reply = newLeader
 	} else {
-		for index, store := range StoreAddresses {
+		for _, store := range StoreAddresses {
 			if store.IsLeader {
 				*reply = store
 			}
