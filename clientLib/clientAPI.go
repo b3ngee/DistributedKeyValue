@@ -11,121 +11,107 @@ go run clientAPI.go [server PUB addr] [client PUB addr] [client PRIV addr]
 package main
 
 import (
+	"../structs"
 	"fmt"
 	"net"
 	"net/rpc"
 	"os"
     //"strconv"
     //"time"
+    "math/rand"
+    "time"
 )
 
-type Store struct {
-	Address   string
-	RPCClient *rpc.Client
-	IsLeader  bool
+
+
+var	serverPubIP = os.Args[1]
+var	clientPubIP = os.Args[2]
+var	clientPrivIP = os.Args[3]
+
+var storeMap = make(map[int]structs.Store)
+
+
+type ClientFileSystem struct {
+	server          	 string
 }
 
-type WriteRequest struct {
-	Key   int
-	Value string
+
+type Client interface {
+	
+	// Reads a value from a key in a store
+	Read(key int, value *string)
+
+	// Writes a value into a key in a leader store
+	Write(key int, value *string)
+
 }
 
-type ACK struct {
-	Acknowledged bool
-	Key          int
-	Value        string
-	Error        error
-}
-
-type ServerRPC int
-type StoreRPC int
-var serverAddress string
 
 
-var storeNetwork = make(map[string]Store)
+// To connect to a server return the interface
+func ConnectServer(serverAddr string)(cli Client, err error){
+	serverRPC, err := rpc.Dial("tcp", serverAddr)
+	if err != nil {
+		return nil, err
+	}
 
-// Registers with the server
-func (s ServerRPC) RegisterClient(serverAddr string, reply map[string]Store){
 
-	pubServerAddr := os.Args[1]
 
-	serverAddress = pubServerAddr
+	var replyStoreMap = make(map[int]structs.Store)
 
-	pubClientAddr := os.Args[2]
+	err = serverRPC.Call("Server.RegisterClient", serverPubIP, &replyStoreMap)
+	HandleError(err)
+	fmt.Println("Client has successfully connected to the server")
 
-	serverClient, dialErr := rpc.Dial("tcp", pubServerAddr)
-	HandleError(dialErr)
+	storeMap = replyStoreMap
 
-	callErr := serverClient.Call("Server.RegisterClient", pubServerAddr, &pubClientAddr)
+	clientFS := ClientFileSystem{server: serverAddr}
 
-	storeNetwork = reply
-
-	HandleError(callErr)
+	return clientFS, err
 }
 
 // Writes to a store
-func (st StoreRPC) Write(storeAddr string, reply ACK){
-
-	for _, store := range storeNetwork {
-			if store.IsLeader == true {
-
-				replyACK := ACK{}
-
-				err := store.RPCClient.Call("Store.Write", store.Address, &replyACK)
-				HandleError(err)
-
-				fmt.Println(replyACK.Value)
-			}else{
-				fmt.Println("Could not find a leader to write to, please try again")
-			}
-
-		}
-
+func (cfs ClientFileSystem)Write(key int, value *string){
 
 
 }
 
+
+
 // Reads from a store
-func (st StoreRPC) Read(){
+func (cfs ClientFileSystem)Read(key int, value *string){
+
+	var storeMapLength = len(storeMap)
+
+	var rand = random(0, storeMapLength)
+
+	randomStore := storeMap[rand]
+
+	randomStore.RPCClient.Call("Store.ConsistentRead", key, &value)
 
 
 
 }
 
 //Updates the map for the client
-func (s ServerRPC) UpdateStoreMap(serverAddr string, reply map[string]Store){
-
-	serverClient, dialErr := rpc.Dial("tcp", serverAddress)
-	HandleError(dialErr)
-	replyStoreMap := make(map[string]Store)
-
-	callErr := serverClient.Call("Server.UpdateStores", serverAddress, &replyStoreMap)
-
-	fmt.Println(callErr)
-
-	storeNetwork = replyStoreMap
+func UpdateStoreMap(){
 }
 
 
+
+func random(min, max int) int {
+    rand.Seed(time.Now().Unix())
+    return rand.Intn(max - min) + min
+}
 
 
 
 // runs the main function for the player
 func main() {
-	serverPubIP := os.Args[1]
-	//clientPubIP := os.Args[2]
-	clientPrivIP := os.Args[3]
 
 	clientListener, err := net.Listen("tcp", clientPrivIP)
 	HandleError(err)
 
-	cli, err2 := rpc.Dial("tcp", serverPubIP)
-	HandleError(err2)
-
-	var id bool
-	err = cli.Call("Player.RegisterPlayer", serverPubIP, &id)
-	HandleError(err)
-	fmt.Println("Client has successfully connected to the server")
 
 	for {
 		conn, _ := clientListener.Accept()
