@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
@@ -230,6 +231,27 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 	return nil
 }
 
+// UpdateNewStoreLog is when another store requests from a leader to get an updated log.
+// Leader will add the requesting store to its StoreNetwork.
+func (s *Store) UpdateNewStoreLog(storeAddr string, logEntries *[]structs.LogEntry) (err error) {
+	fmt.Println("Receiving update log request from: ")
+	fmt.Println(storeAddr)
+
+	client, _ := rpc.Dial("tcp", storeAddr)
+
+	StoreNetwork[storeAddr] = structs.Store{
+		Address:   storeAddr,
+		RPCClient: client,
+		IsLeader:  false,
+	}
+
+	*logEntries = Logs
+	return nil
+}
+
+// ReceiveHeartbeatFromLeader is a heartbeat signal from the leader to indicate that it is still up.
+// If the heartbeat goes over the expected threshhold, there will be a re-electon for a new leader.
+// Then, delete the leader from StoreNetwork.
 func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err error) {
 	if !AmIConnected {
 		return errors.DisconnectedError(StorePublicAddress)
@@ -238,6 +260,8 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err
 		LeaderHeartbeat = time.Now()
 	} else {
 		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
+
+			delete(StoreNetwork, LeaderAddress)
 			LeaderAddress = ""
 			LeaderHeartbeat = time.Time{}
 			fmt.Println("Aout to start election")
@@ -249,29 +273,95 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err
 	return nil
 }
 
+// RequestVote is a request for a vote from another store when the re-election is happening.
+// It compares the candidate's information with its own and checks whether it is a better candidate.
+// Checks in the following order:
+// If the number of the candidate's committed logs (DONE writes) is greater than its own, it gives it a vote.
+// If the number of the candidate's length of logs is greater than its own, it gives it a vote.
+// If after the previous two conditions it is still tied, it gives it a vote.
+func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err error) {
+
+	logLength := len(Logs)
+	numberCommittedLogs := ComputeCommittedLogs()
+
+	if candidateInfo.NumberOfCommitted >= numberCommittedLogs || candidateInfo.LogLength >= logLength {
+		*vote = 1
+	} else {
+		*vote = 0
+	}
+
+	return nil
+}
+
+// UpdateLeader is a request to identify a new leader being elected.
+// Each store updates their StoreNetwork and change a store to become the new leader.
+// Each store will have to change the LeaderAddress global variable of their own.
+func (s *Store) UpdateLeader(leaderAddr string, ack *bool) (err error) {
+
+	LeaderAddress = leaderAddr
+
+	for key, store := range StoreNetwork {
+		if key == leaderAddr {
+			StoreNetwork[key] = structs.Store{Address: store.Address, RPCClient: store.RPCClient, IsLeader: true}
+		}
+	}
+
+	*ack = true
+
+	return nil
+}
+
 ///////////////////////////////////////////
 //			   Outgoing RPC		         //
 ///////////////////////////////////////////
 
 func RegisterWithServer() {
 	client, _ := rpc.Dial("tcp", ServerAddress)
+
+	var leaderStore structs.StoreInfo
 	var listOfStores []structs.StoreInfo
-	client.Call("Server.RegisterStore", StorePublicAddress, &listOfStores)
+	var logsToUpdate []structs.LogEntry
 
-	fmt.Println("Registering with server succeess, received: ")
-	fmt.Println(listOfStores)
-	AmIConnected = true
+	client.Call("Server.RegisterStoreFirstPhase", StorePublicAddress, &leaderStore)
 
-	for _, store := range listOfStores {
-		if store.IsLeader {
-			LeaderAddress = store.Address
+	if leaderStore.Address == StorePublicAddress {
+
+		fmt.Println("Registering with the server successful, you are the leader!")
+
+		LeaderAddress = leaderStore.Address
+
+		AmILeader = leaderStore.IsLeader
+
+	} else {
+
+		leaderClient, _ := rpc.Dial("tcp", leaderStore.Address)
+
+		StoreNetwork[leaderStore.Address] = structs.Store{
+			Address:   leaderStore.Address,
+			RPCClient: leaderClient,
+			IsLeader:  leaderStore.IsLeader,
 		}
-		if store.Address != StorePublicAddress {
-			RegisterStore(store.Address)
-		} else {
-			AmILeader = store.IsLeader
+
+		leaderClient.Call("Store.UpdateNewStoreLog", StorePublicAddress, &logsToUpdate)
+		Logs = logsToUpdate
+
+		client.Call("Server.RegisterStoreSecondPhase", StorePublicAddress, &listOfStores)
+
+		fmt.Println("Registering with server succeess, received: ")
+		fmt.Println(listOfStores)
+
+		for _, store := range listOfStores {
+			if store.IsLeader {
+				LeaderAddress = store.Address
+			}
+			if store.Address != StorePublicAddress && !store.IsLeader {
+				RegisterStore(store.Address)
+			}
 		}
+
 	}
+
+	AmIConnected = true
 }
 
 func RegisterStore(store string) {
@@ -352,23 +442,33 @@ func Log(entry structs.LogEntry) {
 }
 
 func ElectNewLeader() {
-	var numberOfVotes int
+	rand.Seed(time.Now().UnixNano())
+
+	numberOfVotes := 1
+
+	candidateInfo := structs.CandidateInfo{
+		LogLength:         len(Logs),
+		NumberOfCommitted: ComputeCommittedLogs(),
+	}
+
 	for _, store := range StoreNetwork {
-		candidateInfo := structs.CandidateInfo{
-			LogLength:         len(Logs),
-			NumberOfCommitted: ComputeCommittedLogs(),
-		}
 
 		var vote int
+
 		if LeaderAddress == "" {
+
+			randomTimeout := rand.Intn(300-150) + 150
+			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
 			store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
 		} else {
+
 			break
 		}
 
 		numberOfVotes = numberOfVotes + vote
 
 		if numberOfVotes >= len(StoreNetwork)/2 && LeaderAddress == "" {
+
 			LeaderAddress = StorePublicAddress
 			AmILeader = true
 			EstablishLeaderRole()
@@ -380,13 +480,24 @@ func ElectNewLeader() {
 
 func EstablishLeaderRole() {
 	for _, store := range StoreNetwork {
+
 		var ack bool
 		store.RPCClient.Call("Store.UpdateLeader", StorePublicAddress, &ack)
 	}
+
+	go InitHeartbeatLeader()
 }
 
 func ComputeCommittedLogs() int {
-	return 0
+	numCommittedLogs := 0
+
+	for _, logInfo := range Logs {
+		if logInfo.IsCommitted {
+			numCommittedLogs++
+		}
+	}
+
+	return numCommittedLogs
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]
