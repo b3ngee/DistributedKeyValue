@@ -12,94 +12,93 @@ package clientLib
 
 import (
 	"fmt"
-	"math/rand"
 	"net/rpc"
-	"time"
 
 	"../structs"
 )
 
-type ClientSystem struct {
+type UserClient struct {
 	ServerClient *rpc.Client
 	Stores       []structs.StoreInfo
 }
 
-type Client interface {
+type UserClientInterface interface {
 
+	// Write
+	Write(address string, key int, value string) (err error)
 	// Consistent Read
 	// If leader, finds the majority answer from across network and return to client
 	// If not let client know to re-read from leader
 	// throws 	NonLeaderReadError
 	//			KeyDoesNotExistError
 	//			DisconnectedError
-	ConsistentRead(key int) (value string, err error)
+	ConsistentRead(address string, key int) (value string, err error)
 
 	// Default Read
 	// If leader respond with value, if not let client know to re-read from leader
 	// throws 	NonLeaderReadError
 	//			KeyDoesNotExistError
 	//			DisconnectedError
-	DefaultRead(key int) (value string, err error)
+	DefaultRead(address string, key int) (value string, err error)
 
 	// Fast Read
 	// Returns the value regardless of if it is leader or follower
 	// throws 	KeyDoesNotExistError
 	//			DisconnectedError
-	FastRead(key int) (value string, err error)
+	FastRead(address string, key int) (value string, err error)
 }
 
 // To connect to a server return the interface
-func ConnectToServer(serverPubIP string, clientPubIP string) (cli Client, err error) {
+func ConnectToServer(serverPubIP string, clientPubIP string) (cli UserClientInterface, storeNetwork []structs.StoreInfo, err error) {
+	var replyStoreAddresses []structs.StoreInfo
 	serverRPC, err := rpc.Dial("tcp", serverPubIP)
 	if err != nil {
-		return nil, err
+		return nil, replyStoreAddresses, err
 	}
 
-	var replyStoreAddresses []structs.StoreInfo
 	err = serverRPC.Call("Server.RegisterClient", clientPubIP, &replyStoreAddresses)
 	if err != nil {
-		return nil, err
+		return nil, replyStoreAddresses, err
 	}
 
-	clientSys := ClientSystem{ServerClient: serverRPC, Stores: replyStoreAddresses}
+	userClient := UserClient{ServerClient: serverRPC, Stores: replyStoreAddresses}
 
 	fmt.Println("Client has successfully connected to the server")
-	return clientSys, nil
+	return userClient, replyStoreAddresses, nil
 }
 
 // Writes to a store
-func (cs ClientSystem) Write(key int, value *string) (err error) {
-
+func (uc UserClient) Write(address string, key int, value string) (err error) {
+	var reply bool
+	client, _ := rpc.Dial("tcp", address)
+	writeReq := structs.WriteRequest{
+		Key:   key,
+		Value: value,
+	}
+	err = client.Call("Store.Write", writeReq, &reply)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // ConsistentRead from a store
-func (cs ClientSystem) ConsistentRead(key int) (value string, err error) {
-	storeNetwork := cs.Stores
-	var storeMapLength = len(storeNetwork)
-	var rand = random(0, storeMapLength)
-
-	randomStore := storeNetwork[rand]
-	client, _ := rpc.Dial("tcp", randomStore.Address)
+func (uc UserClient) ConsistentRead(address string, key int) (value string, err error) {
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.ConsistentRead", key, &value)
 	if err != nil {
-		return "", err
+		return "Error", err
 	}
 
 	return value, err
 }
 
 // DefaultRead from a store
-func (cs ClientSystem) DefaultRead(key int) (value string, err error) {
-	storeNetwork := cs.Stores
-	var storeMapLength = len(storeNetwork)
-	var rand = random(0, storeMapLength)
-
-	randomStore := storeNetwork[rand]
-	client, _ := rpc.Dial("tcp", randomStore.Address)
+func (uc UserClient) DefaultRead(address string, key int) (value string, err error) {
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.DefaultRead", key, &value)
 	if err != nil {
-		return "", err
+		return "Error", err
 	}
 
 	return value, err
@@ -107,16 +106,11 @@ func (cs ClientSystem) DefaultRead(key int) (value string, err error) {
 }
 
 // FastRead from a store
-func (cs ClientSystem) FastRead(key int) (value string, err error) {
-	storeNetwork := cs.Stores
-	var storeMapLength = len(storeNetwork)
-	var rand = random(0, storeMapLength)
-
-	randomStore := storeNetwork[rand]
-	client, _ := rpc.Dial("tcp", randomStore.Address)
+func (uc UserClient) FastRead(address string, key int) (value string, err error) {
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.FastRead", key, &value)
 	if err != nil {
-		return "", err
+		return "Error", err
 	}
 
 	return value, err
@@ -125,13 +119,6 @@ func (cs ClientSystem) FastRead(key int) (value string, err error) {
 //Updates the map for the client
 func UpdateStoreMap() {
 
-}
-
-// returns a random number from a range of [min, max]
-func random(min, max int) int {
-	source := rand.NewSource(time.Now().UnixNano())
-	newRand := rand.New(source)
-	return newRand.Intn(max-min) + min
 }
 
 //handles errors

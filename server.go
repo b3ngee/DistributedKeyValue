@@ -21,9 +21,7 @@ import (
 
 type Server int
 
-var globalStoreID = 1
-
-var StoreMap = []structs.Store{}
+var clientMap = make(map[string]*rpc.Client)
 
 var StoreAddresses = []structs.StoreInfo{}
 
@@ -49,19 +47,13 @@ func (server *Server) RegisterClient(clientAddress string, reply *[]structs.Stor
 // -
 func (server *Server) RegisterStore(storeAddress string, reply *[]structs.StoreInfo) error {
 
-	fmt.Println("Currently registering ")
+	fmt.Println("Currently registering: ")
 	fmt.Println(storeAddress)
 
-	cli, _ := rpc.Dial("tcp", storeAddress)
-	if len(StoreMap) == 0 {
-
-		StoreMap = append(StoreMap, structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: true})
+	if len(StoreAddresses) == 0 {
 		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: true})
 	} else {
-
-		StoreMap = append(StoreMap, structs.Store{Address: storeAddress, RPCClient: cli, IsLeader: false})
 		StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: false})
-
 	}
 
 	// sendListOfStores()
@@ -70,19 +62,6 @@ func (server *Server) RegisterStore(storeAddress string, reply *[]structs.StoreI
 
 	return nil
 }
-
-// HELPER FUNCTIONS
-
-// sendListOfStores updates the other stores map when a new store registers.
-
-// func sendListOfStores() {
-// 	fmt.Println("in send list of stores")
-// 	for _, value := range StoreMap {
-
-// 		var reply string
-// 		// value.RPCClient.Call("Store.UpdateStoreMap", StoreMap, &reply)
-// 	}
-// }
 
 func main() {
 

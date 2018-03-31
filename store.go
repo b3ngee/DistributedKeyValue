@@ -116,17 +116,19 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 		return nil
 	}
 	fmt.Println("cannot find key")
+	fmt.Println(Dictionary)
 	return errors.KeyDoesNotExistError(strconv.Itoa(key))
 }
 
 // Write
 // throws DisconnectedError
 
-func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error) {
+func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 	if !AmIConnected {
 		return errors.DisconnectedError(StorePublicAddress)
 	}
 	if AmILeader {
+
 		var numAcksUncommitted int
 		var numAcksCommitted int
 
@@ -137,6 +139,15 @@ func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error
 		}
 
 		Log(entry)
+
+		if len(StoreNetwork) == 0 {
+
+			Dictionary[request.Key] = request.Value
+			entry.IsCommitted = true
+			Log(entry)
+
+			return nil
+		}
 
 		for _, store := range StoreNetwork {
 			var ackUncommitted bool
@@ -154,7 +165,7 @@ func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error
 			}
 		}
 
-		if numAcksUncommitted > len(StoreNetwork)/2 {
+		if numAcksUncommitted >= len(StoreNetwork)/2 {
 			var ackCommitted bool
 			entry.IsCommitted = true
 
@@ -162,28 +173,37 @@ func (s *Store) Write(request structs.WriteRequest, ack *structs.ACK) (err error
 			Dictionary[request.Key] = request.Value
 
 			for _, store := range StoreNetwork {
-				store.RPCClient.Call("Store.WriteLog", entry, &ackCommitted)
+				store.RPCClient.Call("Store.UpdateDictionary", entry, &ackCommitted)
 				if ackCommitted {
 					numAcksCommitted++
 				} else {
 					go func() {
 						for !ackCommitted {
-							store.RPCClient.Call("Store.WriteLog", entry, &ackCommitted)
+							store.RPCClient.Call("Store.UpdateDictionary", entry, &ackCommitted)
 						}
 						numAcksCommitted++
 					}()
 				}
 			}
+		} else {
+			// TODO
 		}
 	} else {
 		return errors.NonLeaderWriteError(LeaderAddress)
 	}
-	ack.Acknowledged = true
+	*reply = true
 	return nil
 }
 
 func (s *Store) WriteLog(entry structs.LogEntry, ack *bool) (err error) {
 	Log(entry)
+	*ack = true
+	return nil
+}
+
+func (s *Store) UpdateDictionary(entry structs.LogEntry, ack *bool) (err error) {
+	Log(entry)
+	Dictionary[entry.Key] = entry.Value
 	*ack = true
 	return nil
 }
@@ -276,6 +296,9 @@ func RegisterWithServer() {
 	AmIConnected = true
 
 	for _, store := range listOfStores {
+		if store.IsLeader {
+			LeaderAddress = store.Address
+		}
 		if store.Address != StorePublicAddress {
 			RegisterStore(store.Address)
 		} else {
