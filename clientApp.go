@@ -33,7 +33,7 @@ func main() {
 	userClient.Write(address, 10, "Yoony WORLD")
 	userClient.Write(address, 1, "Ben WORLD")
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	v1, e1 := userClient.FastRead(address, 1)
 	fmt.Println("fast read : ", v1, e1)
