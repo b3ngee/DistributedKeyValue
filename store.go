@@ -215,7 +215,7 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 }
 
 func (s *Store) WriteLog(entry structs.LogEntries, ack *bool) (err error) {
-	if entry.Current.Index == 0 || reflect.DeepEqual(Logs[entry.Previous.Index], entry.Previous) {
+	if len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous) {
 		Log(entry.Current)
 		*ack = true
 	} else {
@@ -225,7 +225,7 @@ func (s *Store) WriteLog(entry structs.LogEntries, ack *bool) (err error) {
 }
 
 func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error) {
-	if entry.Current.Index == 0 || reflect.DeepEqual(Logs[entry.Previous.Index], entry.Previous) {
+	if len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous) {
 		Log(entry.Current)
 		Dictionary[entry.Current.Key] = entry.Current.Value
 		*ack = true
