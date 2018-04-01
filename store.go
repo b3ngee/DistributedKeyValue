@@ -156,6 +156,7 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 
 			Dictionary[request.Key] = request.Value
 			entry.IsCommitted = true
+			entry.Index = entry.Index + 1
 			Log(entry)
 
 			return nil
