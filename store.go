@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -133,12 +134,23 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 		var numAcksCommitted int
 
 		entry := structs.LogEntry{
+			Index:       len(Logs),
 			Key:         request.Key,
 			Value:       request.Value,
 			IsCommitted: false,
 		}
 
+		var prevLog structs.LogEntry
+		if len(Logs) != 0 {
+			prevLog = Logs[entry.Index-1]
+		}
+
 		Log(entry)
+
+		entries := structs.LogEntries{
+			Current:  entry,
+			Previous: prevLog,
+		}
 
 		if len(StoreNetwork) == 0 {
 
@@ -152,13 +164,13 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 		for _, store := range StoreNetwork {
 			var ackUncommitted bool
 
-			store.RPCClient.Call("Store.WriteLog", entry, &ackUncommitted)
+			store.RPCClient.Call("Store.WriteLog", entries, &ackUncommitted)
 			if ackUncommitted {
 				numAcksUncommitted++
 			} else {
 				go func() {
 					for !ackUncommitted {
-						store.RPCClient.Call("Store.WriteLog", entry, &ackUncommitted)
+						store.RPCClient.Call("Store.WriteLog", entries, &ackUncommitted)
 					}
 					numAcksUncommitted++
 				}()
@@ -167,19 +179,26 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 
 		if numAcksUncommitted >= len(StoreNetwork)/2 {
 			var ackCommitted bool
+			prevLog = entry
 			entry.IsCommitted = true
+			entry.Index = entry.Index + 1
+
+			entries = structs.LogEntries{
+				Current:  entry,
+				Previous: prevLog,
+			}
 
 			Log(entry)
 			Dictionary[request.Key] = request.Value
 
 			for _, store := range StoreNetwork {
-				store.RPCClient.Call("Store.UpdateDictionary", entry, &ackCommitted)
+				store.RPCClient.Call("Store.UpdateDictionary", entries, &ackCommitted)
 				if ackCommitted {
 					numAcksCommitted++
 				} else {
 					go func() {
 						for !ackCommitted {
-							store.RPCClient.Call("Store.UpdateDictionary", entry, &ackCommitted)
+							store.RPCClient.Call("Store.UpdateDictionary", entries, &ackCommitted)
 						}
 						numAcksCommitted++
 					}()
@@ -195,16 +214,27 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 	return nil
 }
 
-func (s *Store) WriteLog(entry structs.LogEntry, ack *bool) (err error) {
-	Log(entry)
-	*ack = true
+func (s *Store) WriteLog(entry structs.LogEntries, ack *bool) (err error) {
+	if entry.Current.Index == 0 || reflect.DeepEqual(Logs[entry.Previous.Index], entry.Previous) {
+		Log(entry.Current)
+		*ack = true
+	} else {
+		*ack = false
+	}
 	return nil
 }
 
-func (s *Store) UpdateDictionary(entry structs.LogEntry, ack *bool) (err error) {
-	Log(entry)
-	Dictionary[entry.Key] = entry.Value
-	*ack = true
+func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error) {
+	if entry.Current.Index == 0 || reflect.DeepEqual(Logs[entry.Previous.Index], entry.Previous) {
+		Log(entry.Current)
+		Dictionary[entry.Current.Key] = entry.Current.Value
+		*ack = true
+	} else {
+		*ack = false
+	}
+	fmt.Println("this is dictionary: ")
+	fmt.Println(Dictionary)
+
 	return nil
 }
 
@@ -435,7 +465,6 @@ func SearchMajorityValue(key int) string {
 }
 
 func Log(entry structs.LogEntry) {
-	entry.Index = len(Logs)
 	Logs = append(Logs, entry)
 	fmt.Println("This is current log: ")
 	fmt.Println(Logs)

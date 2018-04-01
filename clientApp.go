@@ -42,7 +42,7 @@ func main() {
 	v3, e3 := userClient.ConsistentRead(address, 1)
 	fmt.Println("consistent : ", v3, e3)
 
-	userClient.Write(address, 1, "Kevin WORLD")
+	userClient.Write(address, 1, "Hello WORLD")
 	v4, e4 := userClient.FastRead(address, 1)
 	fmt.Println("fast read: ", v4, e4)
 }

@@ -31,6 +31,11 @@ type LogEntry struct {
 	IsCommitted bool
 }
 
+type LogEntries struct {
+	Current  LogEntry
+	Previous LogEntry
+}
+
 type StoreInfo struct {
 	Address  string
 	IsLeader bool

@@ -109,7 +109,7 @@ func (uc UserClient) DefaultRead(address string, key int) (value string, err err
 	if HandleError(err) {
 		return "Error", err
 	}
-	return "", err
+	return value, err
 }
 
 // FastRead from a store
