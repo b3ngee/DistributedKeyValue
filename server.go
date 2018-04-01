@@ -83,7 +83,6 @@ func (server *Server) RegisterStoreSecondPhase(storeAddress string, reply *[]str
 }
 
 func main() {
-
 	server := new(Server)
 	rpc.Register(server)
 
@@ -91,5 +90,8 @@ func main() {
 
 	fmt.Println("Server is now listening on address [" + os.Args[1] + "]")
 
-	rpc.Accept(lis)
+	for {
+		conn, _ := lis.Accept()
+		go rpc.ServeConn(conn)
+	}
 }
