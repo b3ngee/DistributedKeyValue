@@ -440,6 +440,9 @@ func InitHeartbeatLeader() {
 ///////////////////////////////////////////
 func SearchMajorityValue(key int) string {
 	valueArray := make(map[string]int)
+	if len(StoreNetwork) == 0 {
+		return Dictionary[key]
+	}
 	for _, store := range StoreNetwork {
 		var value string
 		store.RPCClient.Call("Store.FastRead", key, &value)
