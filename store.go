@@ -381,6 +381,7 @@ func RegisterWithServer() {
 
 		leaderClient.Call("Store.UpdateNewStoreLog", StorePublicAddress, &logsToUpdate)
 		Logs = logsToUpdate
+		UpdateDictionaryFromLogs()
 
 		client.Call("Server.RegisterStoreSecondPhase", StorePublicAddress, &listOfStores)
 
