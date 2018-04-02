@@ -3,7 +3,7 @@
 Represents a Client application that will do READ/WRITE(s) against store nodes.
 
 USAGE:
-go run clientApp.go [server ip:port] [client ip:port]
+go run clientApp3.go [server ip:port] [client ip:port]
 
 */
 
@@ -35,22 +35,23 @@ func main() {
 
 	fmt.Println("address: ", address)
 
-	userClient.Write(address, 5, "HELLO WORLD")
-	userClient.Write(address, 10, "Yoony WORLD")
-	userClient.Write(address, 1, "Ben WORLD")
+	time.Sleep(2 * time.Second)
+
+	userClient.Write(address, 5, "NEW WORLD 5")
+	userClient.Write(address, 12, "12 WORLD")
+	userClient.Write(address, 1, "NEW WORLD 1")
 
 	time.Sleep(1 * time.Second)
 
-	v1, e1 := userClient.FastRead(address, 1)
+	v1, e1 := userClient.FastRead(address, 5)
 	fmt.Println("fast read : ", v1, e1)
-	v2, e2 := userClient.DefaultRead(address, 1)
+	v2, e2 := userClient.DefaultRead(address, 12)
 	fmt.Println("default : ", v2, e2)
 	v3, e3 := userClient.ConsistentRead(address, 1)
 	fmt.Println("consistent : ", v3, e3)
+	v4, e4 := userClient.ConsistentRead(address, 11)
+	fmt.Println("consistent : ", v4, e4)
 
-	userClient.Write(address, 1, "Hello WORLD")
-	v4, e4 := userClient.FastRead(address, 1)
-	fmt.Println("fast read: ", v4, e4)
 }
 
 ///////////////////////////////////////////
