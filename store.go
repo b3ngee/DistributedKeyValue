@@ -285,14 +285,15 @@ func (s *Store) UpdateNewStoreLog(storeAddr string, logEntries *[]structs.LogEnt
 // ReceiveHeartbeatFromLeader is a heartbeat signal from the leader to indicate that it is still up.
 // If the heartbeat goes over the expected threshhold, there will be a re-electon for a new leader.
 // Then, delete the leader from StoreNetwork.
-func (s *Store) ReceiveHeartbeatFromLeader(time time.Time, ack *bool) (err error) {
+func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *bool) (err error) {
 	if !AmIConnected {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
+	fmt.Println("HEARTBEAT: ", heartbeat.LeaderAddress)
+	LeaderAddress = heartbeat.LeaderAddress
+	LeaderHeartbeat = heartbeat.Timestamp
+	AmILeader = false
 	*ack = true
-	fmt.Println("Before leader time: ", LeaderHeartbeat)
-	LeaderHeartbeat = time
-	fmt.Println("After leader time: ", LeaderHeartbeat)
 	return nil
 }
 
@@ -308,31 +309,10 @@ func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err
 	numberCommittedLogs := ComputeCommittedLogs()
 
 	if candidateInfo.NumberOfCommitted >= numberCommittedLogs || candidateInfo.LogLength >= logLength {
-		fmt.Println("1 vote")
 		*vote = 1
 	} else {
 		*vote = 0
-		fmt.Println("0 vote")
 	}
-
-	return nil
-}
-
-// UpdateLeader is a request to identify a new leader being elected.
-// Each store updates their StoreNetwork and change a store to become the new leader.
-// Each store will have to change the LeaderAddress global variable of their own.
-func (s *Store) UpdateLeader(leaderAddr string, ack *bool) (err error) {
-	fmt.Println("Previous leader: ", LeaderAddress)
-	LeaderAddress = leaderAddr
-	AmILeader = false
-
-	leaderStore := StoreNetwork[leaderAddr]
-	leaderStore.IsLeader = true
-	StoreNetwork[leaderAddr] = leaderStore
-
-	fmt.Println("New leader: ", LeaderAddress)
-
-	*ack = true
 
 	return nil
 }
@@ -443,14 +423,15 @@ func RegisterStore(store string) {
 
 func InitHeartbeatLeader() {
 	for {
-		time.Sleep(2 * time.Second)
-
+		heartbeat := structs.Heartbeat{LeaderAddress: LeaderAddress}
+		fmt.Println("Sending heartbeat...")
 		for _, store := range StoreNetwork {
 			var ack bool
-			fmt.Println("Sending heartbeat...")
-			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", time.Now(), &ack)
+			heartbeat.Timestamp = time.Now()
+			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
 		}
 
+		time.Sleep(2 * time.Second)
 		// if err != nil {
 		// 	fmt.Println("deleting this guy: ", store.Address)
 		// 	delete(StoreNetwork, store.Address)
@@ -465,15 +446,18 @@ func InitHeartbeatLeader() {
 
 func CheckHeartbeat() {
 	for {
-		time.Sleep(2 * time.Second)
-		currentTime := time.Now()
-		fmt.Println("Checking time diff: ", currentTime.Sub(LeaderHeartbeat).Seconds())
-		if currentTime.Sub(LeaderHeartbeat).Seconds() > 2 {
-			fmt.Println("Did not receive heartbeat in time, re-election")
-			delete(StoreNetwork, LeaderAddress)
-			LeaderAddress = ""
-			LeaderHeartbeat = time.Time{}
-			ElectNewLeader()
+		if !AmILeader {
+			time.Sleep(2 * time.Second)
+			currentTime := time.Now()
+			if currentTime.Sub(LeaderHeartbeat).Seconds() > 2 {
+				fmt.Println("Did not receive heartbeat in time, re-election")
+				delete(StoreNetwork, LeaderAddress)
+				LeaderAddress = ""
+				LeaderHeartbeat = time.Time{}
+				ElectNewLeader()
+			}
+		} else {
+			break
 		}
 	}
 }
@@ -528,7 +512,6 @@ func ElectNewLeader() {
 
 	for _, store := range StoreNetwork {
 		var vote int
-		fmt.Println("Electing new leader")
 		if LeaderAddress == "" {
 			randomTimeout := rand.Intn(300-150) + 150
 			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
@@ -539,10 +522,13 @@ func ElectNewLeader() {
 
 		numberOfVotes = numberOfVotes + vote
 
-		if numberOfVotes >= len(StoreNetwork)/2 && LeaderAddress == "" {
-			fmt.Println("New leader found: ", LeaderAddress)
-			EstablishLeaderRole()
-			RollbackAndUpdate()
+		if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
+			//EstablishLeaderRole()
+			fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
+			LeaderAddress = StorePublicAddress
+			AmILeader = true
+			go InitHeartbeatLeader()
+			//RollbackAndUpdate()
 			break
 		}
 	}
@@ -558,18 +544,6 @@ func ComputeCommittedLogs() int {
 	}
 
 	return numCommittedLogs
-}
-
-func EstablishLeaderRole() {
-	LeaderAddress = StorePublicAddress
-	AmILeader = true
-
-	for _, store := range StoreNetwork {
-		var ack bool
-		store.RPCClient.Call("Store.UpdateLeader", StorePublicAddress, &ack)
-	}
-
-	go InitHeartbeatLeader()
 }
 
 func RollbackAndUpdate() {
