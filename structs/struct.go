@@ -1,6 +1,9 @@
 package structs
 
-import "net/rpc"
+import (
+	"net/rpc"
+	"time"
+)
 
 type Store struct {
 	Address   string
@@ -39,4 +42,9 @@ type LogEntries struct {
 type StoreInfo struct {
 	Address  string
 	IsLeader bool
+}
+
+type Heartbeat struct {
+	LeaderAddress string
+	Timestamp     time.Time
 }

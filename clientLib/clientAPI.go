@@ -70,16 +70,13 @@ func ConnectToServer(serverPubIP string, clientPubIP string) (cli UserClientInte
 // Writes to a store
 func (uc UserClient) Write(address string, key int, value string) (err error) {
 	var reply bool
-	client, err := rpc.Dial("tcp", address)
-	if HandleError(err) {
-		return err
-	}
+	client, _ := rpc.Dial("tcp", address)
 	writeReq := structs.WriteRequest{
 		Key:   key,
 		Value: value,
 	}
 	err = client.Call("Store.Write", writeReq, &reply)
-	if HandleError(err) {
+	if err != nil {
 		return err
 	}
 	return nil
@@ -87,12 +84,9 @@ func (uc UserClient) Write(address string, key int, value string) (err error) {
 
 // ConsistentRead from a store
 func (uc UserClient) ConsistentRead(address string, key int) (value string, err error) {
-	client, err := rpc.Dial("tcp", address)
-	if HandleError(err) {
-		return "Error", err
-	}
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.ConsistentRead", key, &value)
-	if HandleError(err) {
+	if err != nil {
 		return "Error", err
 	}
 
@@ -101,12 +95,9 @@ func (uc UserClient) ConsistentRead(address string, key int) (value string, err 
 
 // DefaultRead from a store
 func (uc UserClient) DefaultRead(address string, key int) (value string, err error) {
-	client, err := rpc.Dial("tcp", address)
-	if HandleError(err) {
-		return "Error", err
-	}
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.DefaultRead", key, &value)
-	if HandleError(err) {
+	if err != nil {
 		return "Error", err
 	}
 	return value, err
@@ -114,12 +105,9 @@ func (uc UserClient) DefaultRead(address string, key int) (value string, err err
 
 // FastRead from a store
 func (uc UserClient) FastRead(address string, key int) (value string, err error) {
-	client, err := rpc.Dial("tcp", address)
-	if HandleError(err) {
-		return "Error", err
-	}
+	client, _ := rpc.Dial("tcp", address)
 	err = client.Call("Store.FastRead", key, &value)
-	if HandleError(err) {
+	if err != nil {
 		return "Error", err
 	}
 
@@ -132,10 +120,8 @@ func UpdateStoreMap() {
 }
 
 //handles errors
-func HandleError(err error) bool {
+func HandleError(err error) {
 	if err != nil {
 		fmt.Println(err)
-		return true
 	}
-	return false
 }

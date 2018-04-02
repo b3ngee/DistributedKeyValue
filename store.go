@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -10,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"./errors"
+	"./errorList"
 	"./structs"
 )
 
@@ -62,7 +63,7 @@ type Store int
 //			DisconnectedError
 func (s *Store) ConsistentRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return errors.DisconnectedError(StorePublicAddress)
+		return errorList.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
@@ -72,11 +73,11 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 			return nil
 			// [?] Do we need to update the network with majorityValue?
 		} else {
-			return errors.KeyDoesNotExistError(strconv.Itoa(key))
+			return errorList.KeyDoesNotExistError(strconv.Itoa(key))
 		}
 	}
 
-	return errors.NonLeaderReadError(LeaderAddress)
+	return errorList.NonLeaderReadError(LeaderAddress)
 }
 
 // Default Read
@@ -87,7 +88,7 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 //			DisconnectedError
 func (s *Store) DefaultRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return errors.DisconnectedError(StorePublicAddress)
+		return errorList.DisconnectedError(StorePublicAddress)
 	}
 
 	if AmILeader {
@@ -95,11 +96,11 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 			*value = Dictionary[key]
 			return nil
 		} else {
-			return errors.KeyDoesNotExistError(strconv.Itoa(key))
+			return errorList.KeyDoesNotExistError(strconv.Itoa(key))
 		}
 	}
 
-	return errors.NonLeaderReadError(LeaderAddress)
+	return errorList.NonLeaderReadError(LeaderAddress)
 }
 
 // Fast Read
@@ -109,24 +110,24 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 //			DisconnectedError
 func (s *Store) FastRead(key int, value *string) (err error) {
 	if !AmIConnected {
-		return errors.DisconnectedError(StorePublicAddress)
+		return errorList.DisconnectedError(StorePublicAddress)
 	}
-	fmt.Println("Iamhere")
 	if _, exists := Dictionary[key]; exists {
 		*value = Dictionary[key]
 		return nil
 	}
-	fmt.Println("cannot find key")
 	fmt.Println(Dictionary)
-	return errors.KeyDoesNotExistError(strconv.Itoa(key))
+	return errorList.KeyDoesNotExistError(strconv.Itoa(key))
 }
 
 // Write
-// throws DisconnectedError
-
+// Writes a value into key
+//
+// throws	NonLeaderWriteError
+//			DisconnectedError
 func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 	if !AmIConnected {
-		return errors.DisconnectedError(StorePublicAddress)
+		return errorList.DisconnectedError(StorePublicAddress)
 	}
 	if AmILeader {
 
@@ -209,7 +210,7 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 			// TODO
 		}
 	} else {
-		return errors.NonLeaderWriteError(LeaderAddress)
+		return errorList.NonLeaderWriteError(LeaderAddress)
 	}
 	*reply = true
 	return nil
@@ -246,6 +247,8 @@ func (s *Store) UpdateConfig(addr string, reply *string) (err error) {
 	return nil
 }
 
+// Registers stores with stores
+//
 func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (err error) {
 	fmt.Println("Receiving registration request from: ")
 	fmt.Println(theirInfo)
@@ -257,7 +260,6 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 		IsLeader:  theirInfo.IsLeader,
 	}
 
-	// TODO set isLeader to true if you are a leader
 	*isLeader = AmILeader
 	return nil
 }
@@ -283,24 +285,15 @@ func (s *Store) UpdateNewStoreLog(storeAddr string, logEntries *[]structs.LogEnt
 // ReceiveHeartbeatFromLeader is a heartbeat signal from the leader to indicate that it is still up.
 // If the heartbeat goes over the expected threshhold, there will be a re-electon for a new leader.
 // Then, delete the leader from StoreNetwork.
-func (s *Store) ReceiveHeartbeatFromLeader(heartBeat string, reply *string) (err error) {
+func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *bool) (err error) {
 	if !AmIConnected {
-		return errors.DisconnectedError(StorePublicAddress)
+		return errorList.DisconnectedError(StorePublicAddress)
 	}
-	if LeaderHeartbeat.IsZero() {
-		LeaderHeartbeat = time.Now()
-	} else {
-		if time.Now().Sub(LeaderHeartbeat) > 3*time.Second {
-
-			delete(StoreNetwork, LeaderAddress)
-			LeaderAddress = ""
-			LeaderHeartbeat = time.Time{}
-			fmt.Println("Aout to start election")
-			ElectNewLeader()
-		} else {
-			LeaderHeartbeat = time.Now()
-		}
-	}
+	fmt.Println("HEARTBEAT: ", heartbeat.LeaderAddress)
+	LeaderAddress = heartbeat.LeaderAddress
+	LeaderHeartbeat = heartbeat.Timestamp
+	AmILeader = false
+	*ack = true
 	return nil
 }
 
@@ -324,21 +317,34 @@ func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err
 	return nil
 }
 
-// UpdateLeader is a request to identify a new leader being elected.
-// Each store updates their StoreNetwork and change a store to become the new leader.
-// Each store will have to change the LeaderAddress global variable of their own.
-func (s *Store) UpdateLeader(leaderAddr string, ack *bool) (err error) {
-
-	LeaderAddress = leaderAddr
-
-	for key, store := range StoreNetwork {
-		if key == leaderAddr {
-			StoreNetwork[key] = structs.Store{Address: store.Address, RPCClient: store.RPCClient, IsLeader: true}
-		}
+// Synchronize current logs to be the same / as up to date as the leader logs
+// After synchronized, perform all committed writes to hash table
+//
+func (s *Store) RollbackAndUpdate(leaderLogs []structs.LogEntry, ack *bool) (err error) {
+	leaderIndex := len(leaderLogs) - 1
+	currentIndex := len(Logs) - 1
+	fmt.Println("Previous Logs: ", Logs)
+	fmt.Println("Previous Dictionary: ", Dictionary)
+	if leaderIndex < 0 || currentIndex < 0 {
+		return errors.New("Index is negative. Leader log or current log is empty.")
 	}
 
-	*ack = true
+	comparingIndex := 0
+	if leaderIndex < currentIndex {
+		comparingIndex = leaderIndex
+	} else {
+		comparingIndex = currentIndex
+	}
 
+	for !reflect.DeepEqual(leaderLogs[comparingIndex], Logs[comparingIndex]) {
+		comparingIndex = comparingIndex - 1
+	}
+
+	SynchronizeLogs(leaderLogs, comparingIndex+1)
+	UpdateDictionaryFromLogs()
+
+	fmt.Println("New Logs: ", Logs)
+	fmt.Println("New Dictionary: ", Dictionary)
 	return nil
 }
 
@@ -417,21 +423,42 @@ func RegisterStore(store string) {
 
 func InitHeartbeatLeader() {
 	for {
+		heartbeat := structs.Heartbeat{LeaderAddress: LeaderAddress}
+		fmt.Println("Sending heartbeat...")
 		for _, store := range StoreNetwork {
-			var reply string
-			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", "", &reply)
-			if err != nil {
-				fmt.Println("deleting this guy: ", store.Address)
-				delete(StoreNetwork, store.Address)
-				for _, str := range StoreNetwork {
-					str.RPCClient.Call("Store.UpdateConfig", store.Address, &reply)
-				}
-				fmt.Println("Updated Config: ")
-				fmt.Println(StoreNetwork)
-			}
+			var ack bool
+			heartbeat.Timestamp = time.Now()
+			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
 		}
 
 		time.Sleep(2 * time.Second)
+		// if err != nil {
+		// 	fmt.Println("deleting this guy: ", store.Address)
+		// 	delete(StoreNetwork, store.Address)
+		// 	for _, str := range StoreNetwork {
+		// 		str.RPCClient.Call("Store.UpdateConfig", store.Address, &reply)
+		// 	}
+		// 	fmt.Println("Updated Config: ")
+		// 	fmt.Println(StoreNetwork)
+		// }
+	}
+}
+
+func CheckHeartbeat() {
+	for {
+		if !AmILeader {
+			time.Sleep(2 * time.Second)
+			currentTime := time.Now()
+			if currentTime.Sub(LeaderHeartbeat).Seconds() > 2 {
+				fmt.Println("Did not receive heartbeat in time, re-election")
+				delete(StoreNetwork, LeaderAddress)
+				LeaderAddress = ""
+				LeaderHeartbeat = time.Time{}
+				ElectNewLeader()
+			}
+		} else {
+			break
+		}
 	}
 }
 
@@ -478,47 +505,33 @@ func ElectNewLeader() {
 	rand.Seed(time.Now().UnixNano())
 
 	numberOfVotes := 1
-
 	candidateInfo := structs.CandidateInfo{
 		LogLength:         len(Logs),
 		NumberOfCommitted: ComputeCommittedLogs(),
 	}
 
 	for _, store := range StoreNetwork {
-
 		var vote int
-
 		if LeaderAddress == "" {
-
 			randomTimeout := rand.Intn(300-150) + 150
 			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
 			store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
 		} else {
-
 			break
 		}
 
 		numberOfVotes = numberOfVotes + vote
 
-		if numberOfVotes >= len(StoreNetwork)/2 && LeaderAddress == "" {
-
+		if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
+			//EstablishLeaderRole()
+			fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
 			LeaderAddress = StorePublicAddress
 			AmILeader = true
-			EstablishLeaderRole()
-
+			go InitHeartbeatLeader()
+			//RollbackAndUpdate()
 			break
 		}
 	}
-}
-
-func EstablishLeaderRole() {
-	for _, store := range StoreNetwork {
-
-		var ack bool
-		store.RPCClient.Call("Store.UpdateLeader", StorePublicAddress, &ack)
-	}
-
-	go InitHeartbeatLeader()
 }
 
 func ComputeCommittedLogs() int {
@@ -531,6 +544,31 @@ func ComputeCommittedLogs() int {
 	}
 
 	return numCommittedLogs
+}
+
+func RollbackAndUpdate() {
+	for _, store := range StoreNetwork {
+		var ack bool
+		store.RPCClient.Go("Store.RollbackAndUpdate", Logs, &ack, nil)
+	}
+}
+
+func SynchronizeLogs(leaderLogs []structs.LogEntry, syncIndex int) {
+	oldLogs := Logs[:syncIndex]
+	newLogs := leaderLogs[syncIndex:len(leaderLogs)]
+	Logs = append(oldLogs, newLogs...)
+}
+
+func UpdateDictionaryFromLogs() {
+	newDictionary := make(map[int]string)
+
+	for _, log := range Logs {
+		if log.IsCommitted {
+			newDictionary[log.Key] = log.Value
+		}
+	}
+
+	Dictionary = newDictionary
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]
@@ -551,9 +589,12 @@ func main() {
 	go rpc.Accept(lis)
 
 	RegisterWithServer()
+	fmt.Println("Leader status: ", AmILeader)
 
 	if AmILeader {
 		go InitHeartbeatLeader()
+	} else {
+		go CheckHeartbeat()
 	}
 
 	for {
