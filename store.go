@@ -49,6 +49,9 @@ var StorePrivateAddress string
 // Logs
 var Logs []structs.LogEntry
 
+// CurrentTearm
+var CurrentTerm int
+
 ///////////////////////////////////////////
 //			   Incoming RPC		         //
 ///////////////////////////////////////////
@@ -131,10 +134,8 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 	}
 	if AmILeader {
 
-		var numAcksUncommitted int
-		var numAcksCommitted int
-
 		entry := structs.LogEntry{
+			Term:        CurrentTerm,
 			Index:       len(Logs),
 			Key:         request.Key,
 			Value:       request.Value,
@@ -163,30 +164,29 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 			return nil
 		}
 
+		var acks chan *rpc.Call
+		var ackUncommitted bool
+		var numacks int
 		for _, store := range StoreNetwork {
-			var ackUncommitted bool
-
-			err := store.RPCClient.Call("Store.WriteLog", entries, &ackUncommitted)
-			if HandleDisconnectedStore(err, store.Address) {
-				continue
-			}
-			if ackUncommitted {
-				numAcksUncommitted++
-			} else {
-				go func() {
-					for !ackUncommitted {
-						err := store.RPCClient.Call("Store.WriteLog", entries, &ackUncommitted)
-						if HandleDisconnectedStore(err, store.Address) {
-							continue
-						}
-					}
-					numAcksUncommitted++
-				}()
-			}
+			numacks = 0
+			acks = make(chan *rpc.Call, len(StoreNetwork))
+			store.RPCClient.Go("Store.WriteLog", entries, &ackUncommitted, acks)
 		}
 
-		if numAcksUncommitted >= len(StoreNetwork)/2 {
-			var ackCommitted bool
+		select {
+		case <-acks:
+			if ackUncommitted {
+				numacks++
+			}
+		case <-time.After(5 * time.Second):
+			fmt.Println("timed out")
+		}
+
+		var acks2 chan *rpc.Call
+		var ackCommitted bool
+		var numacks2 int
+		if numacks >= len(StoreNetwork)/2 {
+
 			prevLog = entry
 			entry.IsCommitted = true
 			entry.Index = entry.Index + 1
@@ -200,23 +200,18 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 			Dictionary[request.Key] = request.Value
 
 			for _, store := range StoreNetwork {
-				err := store.RPCClient.Call("Store.UpdateDictionary", entries, &ackCommitted)
-				if HandleDisconnectedStore(err, store.Address) {
-					continue
-				}
+				numacks2 = 0
+				acks2 = make(chan *rpc.Call, len(StoreNetwork))
+				store.RPCClient.Go("Store.UpdateDictionary", entries, &ackCommitted, acks2)
+			}
+
+			select {
+			case <-acks2:
 				if ackCommitted {
-					numAcksCommitted++
-				} else {
-					go func() {
-						for !ackCommitted {
-							err := store.RPCClient.Call("Store.UpdateDictionary", entries, &ackCommitted)
-							if HandleDisconnectedStore(err, store.Address) {
-								continue
-							}
-						}
-						numAcksCommitted++
-					}()
+					numacks2++
 				}
+			case <-time.After(5 * time.Second):
+				fmt.Println("timed out")
 			}
 		} else {
 			// TODO
@@ -229,23 +224,25 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 }
 
 func (s *Store) WriteLog(entry structs.LogEntries, ack *bool) (err error) {
-	if len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous) {
+	if entry.Current.Term >= CurrentTerm && (len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous)) {
 		Log(entry.Current)
 		*ack = true
 	} else {
 		*ack = false
 	}
+
 	return nil
 }
 
 func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error) {
-	if len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous) {
+	if entry.Current.Term >= CurrentTerm && (len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous)) {
 		Log(entry.Current)
 		Dictionary[entry.Current.Key] = entry.Current.Value
 		*ack = true
 	} else {
 		*ack = false
 	}
+
 	fmt.Println("this is dictionary: ")
 	fmt.Println(Dictionary)
 
@@ -628,6 +625,7 @@ func main() {
 	l := new(Store)
 	rpc.Register(l)
 
+	CurrentTerm = 0
 	ServerAddress = os.Args[1]
 	StorePublicAddress = os.Args[2]
 	StorePrivateAddress = os.Args[3]
