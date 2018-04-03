@@ -357,6 +357,15 @@ func (s *Store) RollbackAndUpdate(leaderLogs []structs.LogEntry, ack *bool) (err
 	return nil
 }
 
+// Called when a store detects a disconnected store. Delete store from map
+//
+func (s *Store) DeleteDisconnectedStore(address string, ack *bool) (err error) {
+	delete(StoreNetwork, address)
+	fmt.Println("Updated store: ", StoreNetwork)
+	*ack = true
+	return nil
+}
+
 ///////////////////////////////////////////
 //			   Outgoing RPC		         //
 ///////////////////////////////////////////
@@ -420,7 +429,10 @@ func RegisterStore(store string) {
 		IsLeader: AmILeader,
 	}
 
-	client.Call("Store.RegisterWithStore", myInfo, &isLeader)
+	err := client.Call("Store.RegisterWithStore", myInfo, &isLeader)
+	if HandleDisconnectedStore(err, store) {
+		return
+	}
 
 	StoreNetwork[store] = structs.Store{
 		Address:   store,
@@ -438,7 +450,10 @@ func InitHeartbeatLeader() {
 		for _, store := range StoreNetwork {
 			var ack bool
 			heartbeat.Timestamp = time.Now()
-			store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
+			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
+			if HandleDisconnectedStore(err, store.Address) {
+				continue
+			}
 		}
 
 		time.Sleep(2 * time.Second)
@@ -482,7 +497,10 @@ func SearchMajorityValue(key int) string {
 	}
 	for _, store := range StoreNetwork {
 		var value string
-		store.RPCClient.Call("Store.FastRead", key, &value)
+		err := store.RPCClient.Call("Store.FastRead", key, &value)
+		if HandleDisconnectedStore(err, store.Address) {
+			continue
+		}
 
 		if value != "" {
 			if count, exists := valueArray[value]; exists {
@@ -525,7 +543,10 @@ func ElectNewLeader() {
 		if LeaderAddress == "" {
 			randomTimeout := rand.Intn(300-150) + 150
 			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
-			store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
+			err := store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
+			if HandleDisconnectedStore(err, store.Address) {
+				continue
+			}
 		} else {
 			break
 		}
@@ -560,6 +581,7 @@ func RollbackAndUpdate() {
 	for _, store := range StoreNetwork {
 		var ack bool
 		store.RPCClient.Go("Store.RollbackAndUpdate", Logs, &ack, nil)
+		// HandleDisconnectedStore here???
 	}
 }
 
@@ -579,6 +601,23 @@ func UpdateDictionaryFromLogs() {
 	}
 
 	Dictionary = newDictionary
+}
+
+func HandleDisconnectedStore(err error, address string) bool {
+	isDisconnected := false
+	if err != nil {
+		if err.Error() == "connection is shut down" {
+			isDisconnected = true
+			delete(StoreNetwork, address)
+
+			for _, store := range StoreNetwork {
+				var ack bool
+				go store.RPCClient.Call("Store.DeleteDisconnectedStore", address, &ack)
+			}
+		}
+	}
+
+	return isDisconnected
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]
