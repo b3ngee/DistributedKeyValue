@@ -307,6 +307,7 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *boo
 	LeaderHeartbeat = heartbeat.Timestamp
 	AmILeader = false
 	*ack = true
+	AlreadyVoted = false
 	return nil
 }
 
@@ -321,7 +322,7 @@ func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err
 	logLength := len(Logs)
 	numberCommittedLogs := ComputeCommittedLogs()
 
-	if candidateInfo.Term+1 == CurrentTerm && !AlreadyVoted {
+	if candidateInfo.Term >= CurrentTerm && !AlreadyVoted {
 		if candidateInfo.NumberOfCommitted >= numberCommittedLogs {
 			*vote = 1
 			AlreadyVoted = true
@@ -554,8 +555,6 @@ func ElectNewLeader() {
 	for _, store := range StoreNetwork {
 		var vote int
 		if LeaderAddress == "" {
-			randomTimeout := rand.Intn(300-150) + 150
-			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
 			err := store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
 			if HandleDisconnectedStore(err, store.Address) {
 				continue
