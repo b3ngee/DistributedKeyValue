@@ -22,6 +22,7 @@ type ACK struct {
 }
 
 type CandidateInfo struct {
+	Term              int
 	LogLength         int
 	NumberOfCommitted int
 }
@@ -45,6 +46,7 @@ type StoreInfo struct {
 }
 
 type Heartbeat struct {
+	Term          int
 	LeaderAddress string
 	Timestamp     time.Time
 }
