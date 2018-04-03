@@ -552,27 +552,48 @@ func ElectNewLeader() {
 		NumberOfCommitted: ComputeCommittedLogs(),
 	}
 
+	if len(StoreNetwork) == 0 {
+		LeaderAddress = StorePublicAddress
+		AmILeader = true
+		go InitHeartbeatLeader()
+		CurrentTerm++
+	}
+
+	fmt.Println(StoreNetwork)
+
+	var voteReply chan *rpc.Call
 	for _, store := range StoreNetwork {
 		var vote int
 		if LeaderAddress == "" {
-			err := store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
-			if HandleDisconnectedStore(err, store.Address) {
-				continue
-			}
+			voteReply = make(chan *rpc.Call, 1)
+			store.RPCClient.Go("Store.RequestVote", candidateInfo, &vote, voteReply)
+			// if HandleDisconnectedStore(err, store.Address) {
+			// 	continue
+			// }
 		} else {
 			break
 		}
 
-		numberOfVotes = numberOfVotes + vote
+		select {
+		case <-voteReply:
+			if vote == 1 {
 
-		if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
-			//EstablishLeaderRole()
-			fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
-			LeaderAddress = StorePublicAddress
-			AmILeader = true
-			go InitHeartbeatLeader()
-			//RollbackAndUpdate()
-			break
+				numberOfVotes = numberOfVotes + vote
+
+				if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
+					//EstablishLeaderRole()
+					fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
+					LeaderAddress = StorePublicAddress
+					AmILeader = true
+					go InitHeartbeatLeader()
+					//RollbackAndUpdate()
+					break
+				}
+			}
+		case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
+			fmt.Println("No Clear Winner of election")
+			CurrentTerm++
+			ElectNewLeader()
 		}
 	}
 }
