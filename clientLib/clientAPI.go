@@ -125,3 +125,14 @@ func HandleError(err error) {
 		fmt.Println(err)
 	}
 }
+
+// TODO: send disconnected error to client
+func HandleDisconnectedStore(err error, address string) bool {
+	if err != nil {
+		if err.Error() == "connection is shut down" {
+			return true
+		}
+	}
+
+	return false
+}
