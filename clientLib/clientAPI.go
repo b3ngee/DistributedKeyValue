@@ -17,11 +17,6 @@ import (
 	"../structs"
 )
 
-type UserClient struct {
-	ServerClient *rpc.Client
-	Stores       []structs.StoreInfo
-}
-
 type UserClientInterface interface {
 
 	// Write
@@ -46,6 +41,11 @@ type UserClientInterface interface {
 	// throws 	KeyDoesNotExistError
 	//			DisconnectedError
 	FastRead(address string, key int) (value string, err error)
+}
+
+type UserClient struct {
+	ServerClient *rpc.Client
+	Stores       []structs.StoreInfo
 }
 
 // To connect to a server return the interface
@@ -114,9 +114,14 @@ func (uc UserClient) FastRead(address string, key int) (value string, err error)
 	return value, err
 }
 
-//Updates the map for the client
-func UpdateStoreMap() {
+// Get Updated maps for the client
+func (uc UserClient) RefreshStores() (updatedStores []structs.StoreInfo, err error) {
+	err = uc.ServerClient.Call("Server.RetrieveStores", "", &updatedStores)
+	if err != nil {
+		return updatedStores, err
+	}
 
+	return updatedStores, nil
 }
 
 //handles errors
@@ -133,6 +138,5 @@ func HandleDisconnectedStore(err error, address string) bool {
 			return true
 		}
 	}
-
 	return false
 }

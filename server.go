@@ -79,6 +79,15 @@ func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *struct
 	return nil
 }
 
+// UpdateClientMap sends an updated map to the client
+//
+// Possible Error Returns:
+// -
+func (server *Server) RetrieveStores(didNotUse string, reply *[]structs.StoreInfo) error {
+	*reply = StoreAddresses
+	return nil
+}
+
 // RegisterStoreSecondPhase registers the store node to the server with the store address.
 // The server will reply with the store map of all the other stores.
 // Then, it will update the store map of all the clients that are connected.
