@@ -18,8 +18,7 @@ type WriteRequest struct {
 
 type ACK struct {
 	Acknowledged bool
-	Key          int
-	Value        string
+	Address      string
 }
 
 type CandidateInfo struct {
@@ -28,6 +27,7 @@ type CandidateInfo struct {
 }
 
 type LogEntry struct {
+	Term        int
 	Index       int
 	Key         int
 	Value       string
