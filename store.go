@@ -49,8 +49,11 @@ var StorePrivateAddress string
 // Logs
 var Logs []structs.LogEntry
 
-// CurrentTearm
+// CurrentTerm
 var CurrentTerm int
+
+// If Store has already voted
+var AlreadyVoted bool
 
 ///////////////////////////////////////////
 //			   Incoming RPC		         //
@@ -299,10 +302,12 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *boo
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
 	fmt.Println("HEARTBEAT: ", heartbeat.LeaderAddress)
+	CurrentTerm = heartbeat.Term
 	LeaderAddress = heartbeat.LeaderAddress
 	LeaderHeartbeat = heartbeat.Timestamp
 	AmILeader = false
 	*ack = true
+	AlreadyVoted = false
 	return nil
 }
 
@@ -317,8 +322,16 @@ func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err
 	logLength := len(Logs)
 	numberCommittedLogs := ComputeCommittedLogs()
 
-	if candidateInfo.NumberOfCommitted >= numberCommittedLogs || candidateInfo.LogLength >= logLength {
-		*vote = 1
+	if candidateInfo.Term >= CurrentTerm && !AlreadyVoted {
+		if candidateInfo.NumberOfCommitted >= numberCommittedLogs {
+			*vote = 1
+			AlreadyVoted = true
+		} else if candidateInfo.LogLength >= logLength {
+			*vote = 1
+			AlreadyVoted = true
+		} else {
+			*vote = 0
+		}
 	} else {
 		*vote = 0
 	}
@@ -445,7 +458,7 @@ func RegisterStore(store string) {
 
 func InitHeartbeatLeader() {
 	for {
-		heartbeat := structs.Heartbeat{LeaderAddress: LeaderAddress}
+		heartbeat := structs.Heartbeat{Term: CurrentTerm, LeaderAddress: LeaderAddress}
 		fmt.Println("Sending heartbeat...")
 		for _, store := range StoreNetwork {
 			var ack bool
@@ -534,6 +547,7 @@ func ElectNewLeader() {
 
 	numberOfVotes := 1
 	candidateInfo := structs.CandidateInfo{
+		Term:              CurrentTerm + 1,
 		LogLength:         len(Logs),
 		NumberOfCommitted: ComputeCommittedLogs(),
 	}
@@ -541,8 +555,6 @@ func ElectNewLeader() {
 	for _, store := range StoreNetwork {
 		var vote int
 		if LeaderAddress == "" {
-			randomTimeout := rand.Intn(300-150) + 150
-			time.Sleep(time.Duration(randomTimeout) * time.Millisecond)
 			err := store.RPCClient.Call("Store.RequestVote", candidateInfo, &vote)
 			if HandleDisconnectedStore(err, store.Address) {
 				continue
@@ -626,6 +638,7 @@ func main() {
 	rpc.Register(l)
 
 	CurrentTerm = 0
+	AlreadyVoted = false
 	ServerAddress = os.Args[1]
 	StorePublicAddress = os.Args[2]
 	StorePrivateAddress = os.Args[3]
