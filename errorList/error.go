@@ -29,5 +29,5 @@ func (e KeyDoesNotExistError) Error() string {
 type DisconnectedError string
 
 func (e DisconnectedError) Error() string {
-	return fmt.Sprintf("[%s] is disconnected", string(e))
+	return fmt.Sprintf("[%s] is disconnected. Please try again.", string(e))
 }
