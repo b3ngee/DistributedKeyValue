@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	"time"
 
 	"./structs"
 )
@@ -54,11 +55,25 @@ func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *struct
 		StoreAddresses = append(StoreAddresses, newLeader)
 		*reply = newLeader
 	} else {
-		for _, store := range StoreAddresses {
+		for i, store := range StoreAddresses {
 			if store.IsLeader {
-				*reply = store
+				client, _ := rpc.Dial("tcp", store.Address)
+
+				if client == nil {
+					StoreAddresses = append(StoreAddresses[:i], StoreAddresses[i+1:]...)
+					newLeader := structs.StoreInfo{Address: storeAddress, IsLeader: true}
+					StoreAddresses = append(StoreAddresses, newLeader)
+					fmt.Println("client is nil: ", StoreAddresses)
+					*reply = newLeader
+				} else {
+					fmt.Println("never here?")
+					*reply = store
+				}
+
+				break
 			}
 		}
+
 	}
 
 	return nil
@@ -82,6 +97,39 @@ func (server *Server) RegisterStoreSecondPhase(storeAddress string, reply *[]str
 	return nil
 }
 
+// Stores call this method to inform the server which address is disconnected and allow server to
+// update the store network
+func (server *Server) DisconnectStore(storeAddress string, reply *bool) error {
+	fmt.Println("Store before: ", StoreAddresses)
+	for i, store := range StoreAddresses {
+		if store.Address == storeAddress {
+			StoreAddresses = append(StoreAddresses[:i], StoreAddresses[i+1:]...)
+		}
+	}
+	fmt.Println("Store After: ", StoreAddresses)
+	*reply = true
+	return nil
+}
+
+// Update the leadership role once a new leader is elected
+func (server *Server) UpdateLeadership(leaderAddress string, reply *bool) error {
+	fmt.Println("Leadership before: ", StoreAddresses)
+	indexToDelete := 0
+	for i, store := range StoreAddresses {
+		if store.IsLeader && store.Address != leaderAddress {
+			indexToDelete = i
+		}
+		if store.Address == leaderAddress {
+			store.IsLeader = true
+			StoreAddresses[i] = store
+		}
+	}
+	StoreAddresses = append(StoreAddresses[:indexToDelete], StoreAddresses[indexToDelete+1:]...)
+	fmt.Println("Leadership After: ", StoreAddresses)
+	*reply = true
+	return nil
+}
+
 func main() {
 	server := new(Server)
 	rpc.Register(server)
@@ -93,5 +141,11 @@ func main() {
 	for {
 		conn, _ := lis.Accept()
 		go rpc.ServeConn(conn)
+		go printStore()
 	}
+}
+
+func printStore() {
+	time.Sleep(10 * time.Second)
+	fmt.Println("Store: ", StoreAddresses)
 }

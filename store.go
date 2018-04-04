@@ -373,6 +373,7 @@ func (s *Store) RollbackAndUpdate(leaderLogs []structs.LogEntry, ack *bool) (err
 // Called when a store detects a disconnected store. Delete store from map
 //
 func (s *Store) DeleteDisconnectedStore(address string, ack *bool) (err error) {
+	fmt.Println("Before: ", StoreNetwork)
 	delete(StoreNetwork, address)
 	fmt.Println("Updated store: ", StoreNetwork)
 	*ack = true
@@ -391,28 +392,36 @@ func RegisterWithServer() {
 	var logsToUpdate []structs.LogEntry
 
 	client.Call("Server.RegisterStoreFirstPhase", StorePublicAddress, &leaderStore)
+	fmt.Println("After first phase: ", leaderStore, StorePublicAddress)
 
 	if leaderStore.Address == StorePublicAddress {
 
 		fmt.Println("Registering with the server successful, you are the leader!")
 
-		LeaderAddress = leaderStore.Address
+		LeaderAddress = StorePublicAddress
 
-		AmILeader = leaderStore.IsLeader
+		AmILeader = true
 
 	} else {
 
 		leaderClient, _ := rpc.Dial("tcp", leaderStore.Address)
 
-		StoreNetwork[leaderStore.Address] = structs.Store{
-			Address:   leaderStore.Address,
-			RPCClient: leaderClient,
-			IsLeader:  leaderStore.IsLeader,
-		}
+		if leaderClient == nil {
+			UpdateDisconnectionOnServer(leaderStore.Address)
+			LeaderAddress = StorePublicAddress
+			AmILeader = true
+		} else {
+			StoreNetwork[leaderStore.Address] = structs.Store{
+				Address:   leaderStore.Address,
+				RPCClient: leaderClient,
+				IsLeader:  leaderStore.IsLeader,
+			}
 
-		leaderClient.Call("Store.UpdateNewStoreLog", StorePublicAddress, &logsToUpdate)
-		Logs = logsToUpdate
-		UpdateDictionaryFromLogs()
+			leaderClient.Call("Store.UpdateNewStoreLog", StorePublicAddress, &logsToUpdate)
+
+			Logs = logsToUpdate
+			UpdateDictionaryFromLogs()
+		}
 
 		client.Call("Server.RegisterStoreSecondPhase", StorePublicAddress, &listOfStores)
 
@@ -428,9 +437,13 @@ func RegisterWithServer() {
 			}
 		}
 
+		if leaderClient != nil {
+			leaderClient.Close()
+		}
 	}
 
 	AmIConnected = true
+	client.Close()
 }
 
 func RegisterStore(store string) {
@@ -465,6 +478,7 @@ func InitHeartbeatLeader() {
 			heartbeat.Timestamp = time.Now()
 			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
 			if HandleDisconnectedStore(err, store.Address) {
+				fmt.Println("heartbeat disconnected")
 				continue
 			}
 		}
@@ -552,11 +566,14 @@ func ElectNewLeader() {
 		NumberOfCommitted: ComputeCommittedLogs(),
 	}
 
+
+	// make himself leader if no stores are in network
 	if len(StoreNetwork) == 0 {
 		LeaderAddress = StorePublicAddress
 		AmILeader = true
-		go InitHeartbeatLeader()
 		CurrentTerm++
+		go InitHeartbeatLeader()
+		UpdateLeadershipOnServer()
 	}
 
 	fmt.Println(StoreNetwork)
@@ -578,6 +595,7 @@ func ElectNewLeader() {
 		case <-voteReply:
 			if vote == 1 {
 
+<<<<<<< Updated upstream
 				numberOfVotes = numberOfVotes + vote
 
 				if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
@@ -587,8 +605,9 @@ func ElectNewLeader() {
 					AmILeader = true
 					go InitHeartbeatLeader()
 					//RollbackAndUpdate()
+					UpdateLeadershipOnServer()
+		
 					break
-				}
 			}
 		case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
 			fmt.Println("No Clear Winner of election")
@@ -643,6 +662,8 @@ func HandleDisconnectedStore(err error, address string) bool {
 			isDisconnected = true
 			delete(StoreNetwork, address)
 
+			UpdateDisconnectionOnServer(address)
+
 			for _, store := range StoreNetwork {
 				var ack bool
 				go store.RPCClient.Call("Store.DeleteDisconnectedStore", address, &ack)
@@ -651,6 +672,23 @@ func HandleDisconnectedStore(err error, address string) bool {
 	}
 
 	return isDisconnected
+}
+
+func UpdateDisconnectionOnServer(address string) {
+	var ack bool
+	client, _ := rpc.Dial("tcp", ServerAddress)
+	err := client.Call("Server.DisconnectStore", address, &ack)
+	if err != nil {
+		fmt.Println(err)
+	}
+	client.Close()
+}
+
+func UpdateLeadershipOnServer() {
+	var ack bool
+	client, _ := rpc.Dial("tcp", ServerAddress)
+	client.Call("Server.UpdateLeadership", StorePublicAddress, &ack)
+	client.Close()
 }
 
 // Run store: go run store.go [PublicServerIP:Port] [PublicStoreIP:Port] [PrivateStoreIP:Port]
