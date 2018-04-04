@@ -41,6 +41,11 @@ type UserClientInterface interface {
 	// throws 	KeyDoesNotExistError
 	//			DisconnectedError
 	FastRead(address string, key int) (value string, err error)
+
+	// Refresh stores
+	// Returns the latest store network from the server
+	//
+	RefreshStores() (stores []structs.StoreInfo, err error)
 }
 
 type UserClient struct {

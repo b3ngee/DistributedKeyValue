@@ -91,6 +91,16 @@ func main() {
 	v3, rerr6 := userClient.DefaultRead(store1, 1)
 	HandleError(rerr6)
 	fmt.Println("Value: ", v3)
+
+	st1, feer1 := userClient.RefreshStores()
+	HandleError(feer1)
+	fmt.Println("Value: ", st1)
+
+	time.Sleep(30 * time.Second)
+
+	st2, feer2 := userClient.RefreshStores()
+	HandleError(feer2)
+	fmt.Println("Value: ", st2)
 }
 
 ///////////////////////////////////////////
