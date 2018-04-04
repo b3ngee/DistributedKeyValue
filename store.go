@@ -595,7 +595,6 @@ func ElectNewLeader() {
 		case <-voteReply:
 			if vote == 1 {
 
-<<<<<<< Updated upstream
 				numberOfVotes = numberOfVotes + vote
 
 				if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
