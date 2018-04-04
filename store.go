@@ -566,7 +566,6 @@ func ElectNewLeader() {
 		NumberOfCommitted: ComputeCommittedLogs(),
 	}
 
-
 	// make himself leader if no stores are in network
 	if len(StoreNetwork) == 0 {
 		LeaderAddress = StorePublicAddress
@@ -605,8 +604,9 @@ func ElectNewLeader() {
 					go InitHeartbeatLeader()
 					//RollbackAndUpdate()
 					UpdateLeadershipOnServer()
-		
+
 					break
+				}
 			}
 		case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
 			fmt.Println("No Clear Winner of election")
