@@ -3,7 +3,7 @@
 Represents a Client application that will do READ/WRITE(s) against store nodes.
 
 USAGE:
-go run clientApp2.go [server ip:port] [client ip:port]
+go run clientApp.go [server ip:port] [client ip:port]
 
 */
 
@@ -22,84 +22,55 @@ import (
 	"./structs"
 )
 
-var serverPubIP string
-var clientPubIP string
-
-// var clientPrivIP string
-var stores []structs.StoreInfo
-
 func main() {
-	serverPubIP = os.Args[1]
-	clientPubIP = os.Args[2]
-	// clientPrivIP = os.Args[3]
-
-	store1 := "127.0.0.1:8001" // leader
-	store2 := "127.0.0.1:8002"
-	store3 := "127.0.0.1:8003"
-	store4 := "127.0.0.1:8004"
+	serverPubIP := os.Args[1]
+	clientPubIP := os.Args[2]
 
 	userClient, storeNetwork, _ := clientLib.ConnectToServer(serverPubIP, clientPubIP)
-	stores = storeNetwork
+	stores := storeNetwork
 
-	// Read "bonjour"
-	v1, rerr1 := userClient.FastRead(store1, 10)
-	HandleError(rerr1)
-	fmt.Println("Value: ", v1)
+	// Write (2, "bonjour")
+	errWrite1 := userClient.Write(RandomStoreAddress(stores), 2, "bonjour")
+	lAddress1, _ := parseAddressFromError(errWrite1)
 
-	// Read "adios"
-	v2, rerr2 := userClient.DefaultRead(store1, 20)
-	HandleError(rerr2)
-	fmt.Println("Value: ", v2)
+	// Retry if not leader
+	if lAddress1 != "" {
+		errWrite1 = userClient.Write(lAddress1, 2, "bonjour")
+	}
 
-	// Read "ciao"
-	v3, rerr3 := userClient.ConsistentRead(store1, 30)
-	HandleError(rerr3)
-	fmt.Println("Value: ", v3)
+	// Write (7, yeoboseyo)
+	errWrite2 := userClient.Write(RandomStoreAddress(stores), 7, "yeoboseyo")
+	lAddress2, _ := parseAddressFromError(errWrite2)
 
-	// No Key Found
-	v4, rerr4 := userClient.FastRead(store1, 11)
-	HandleError(rerr4)
-	fmt.Println("Value: ", v4)
+	// Retry if not leader
+	if lAddress2 != "" {
+		errWrite2 = userClient.Write(lAddress2, 7, "yeoboseyo")
+	}
 
-	// No Key Found
-	v5, rerr5 := userClient.DefaultRead(store1, 11)
-	HandleError(rerr5)
-	fmt.Println("Value: ", v5)
+	// Default (6)
+	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 6)
+	printValue(value1)
+	lAddress3, _ := parseAddressFromError(errRead1)
 
-	// No Key Found
-	v6, rerr6 := userClient.ConsistentRead(store1, 11)
-	HandleError(rerr6)
-	fmt.Println("Value: ", v6)
+	// Retry if not leader
+	if lAddress3 != "" {
+		value1, errRead1 = userClient.DefaultRead(lAddress3, 6)
+		printValue(value1)
+	}
 
-	// Read "bonjour"
-	v7, rerr7 := userClient.FastRead(store3, 10)
-	HandleError(rerr7)
-	fmt.Println("Value: ", v7)
+	// Write (3, bonjour)
+	errWrite3 := userClient.Write(RandomStoreAddress(stores), 3, "bonjour")
+	lAddress4, _ := parseAddressFromError(errWrite3)
 
-	// Read "adios"
-	v8, rerr8 := userClient.DefaultRead(store3, 20)
-	HandleError(rerr8)
-	fmt.Println("Value: ", v8)
+	// Retry if not leader
+	if lAddress4 != "" {
+		errWrite3 = userClient.Write(lAddress4, 3, "bonjour")
+	}
 
-	// Read "ciao"
-	v9, rerr9 := userClient.ConsistentRead(store3, 30)
-	HandleError(rerr9)
-	fmt.Println("Value: ", v9)
-
-	// No Key Found
-	v10, rerr10 := userClient.FastRead(store3, 2)
-	HandleError(rerr10)
-	fmt.Println("Value: ", v10)
-
-	// No Key Found
-	v11, rerr11 := userClient.DefaultRead(store3, 2)
-	HandleError(rerr11)
-	fmt.Println("Value: ", v11)
-
-	// No Key Found
-	v12, rerr12 := userClient.ConsistentRead(store3, 2)
-	HandleError(rerr12)
-	fmt.Println("Value: ", v12)
+	// FastRead (7)
+	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 7)
+	printValue(value2)
+	printError(errRead2)
 }
 
 ///////////////////////////////////////////
@@ -117,7 +88,7 @@ func HandleError(err error) {
 }
 
 // Select a random store address from a list of stores
-func RandomStoreAddress() string {
+func RandomStoreAddress(stores []structs.StoreInfo) string {
 	randomIndex := random(0, len(stores))
 	return stores[randomIndex].Address
 }
@@ -143,4 +114,16 @@ func parseAddressFromError(e error) (string, error) {
 	}
 
 	return "", errors.New("Parsed the wrong error message, does not contain leader address")
+}
+
+func printValue(value string) {
+	if value != "" {
+		fmt.Println("Value: ", value)
+	}
+}
+
+func printError(err error) {
+	if err != nil {
+		fmt.Println(err)
+	}
 }

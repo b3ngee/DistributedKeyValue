@@ -3,7 +3,7 @@
 Represents a Client application that will do READ/WRITE(s) against store nodes.
 
 USAGE:
-go run clientApp3.go [server ip:port] [client ip:port]
+go run clientApp.go [server ip:port] [client ip:port]
 
 */
 
@@ -22,66 +22,57 @@ import (
 	"./structs"
 )
 
-var serverPubIP string
-var clientPubIP string
-
-// var clientPrivIP string
-var stores []structs.StoreInfo
-
 func main() {
-	serverPubIP = os.Args[1]
-	clientPubIP = os.Args[2]
-	// clientPrivIP = os.Args[3]
-
-	store1 := "127.0.0.1:8001" // leader
-	store2 := "127.0.0.1:8002"
-	store3 := "127.0.0.1:8003"
-	store4 := "127.0.0.1:8004"
+	serverPubIP := os.Args[1]
+	clientPubIP := os.Args[2]
 
 	userClient, storeNetwork, _ := clientLib.ConnectToServer(serverPubIP, clientPubIP)
-	stores = storeNetwork
+	stores := storeNetwork
 
-	// Rewriting Key 10 with Value "New World 10"
-	werr1 := userClient.Write(store1, 10, "New World 10")
-	HandleError(werr1)
+	// Write (3, "hola")
+	errWrite1 := userClient.Write(RandomStoreAddress(stores), 3, "hola")
+	lAddress1, _ := parseAddressFromError(errWrite1)
 
-	// Rewriting Key 20 with Value "New World 20"
-	werr2 := userClient.Write(store1, 20, "New World 20")
-	HandleError(werr2)
+	// Retry if not leader
+	if lAddress1 != "" {
+		errWrite1 = userClient.Write(lAddress1, 3, "hola")
+	}
 
-	// Write Key 12 with Value "World 12" (error non-leader)
-	werr3 := userClient.Write(store2, 12, "World 12")
-	HandleError(werr3)
+	// Default (2)
+	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 2)
+	printValue(value1)
+	lAddress2, _ := parseAddressFromError(errRead1)
 
-	// Write Key 12 with Value "World 12" (error non-leader)
-	werr4 := userClient.Write(store4, 12, "World 12")
-	HandleError(werr4)
+	// Retry if not leader
+	if lAddress2 != "" {
+		value1, errRead1 = userClient.DefaultRead(lAddress2, 2)
+		printValue(value1)
+	}
 
-	// Write Key 12 with Value "World 12" (to leader)
-	werr5 := userClient.Write(store1, 12, "World 12")
-	HandleError(werr5)
+	// Write (5, guten tag)
+	errWrite2 := userClient.Write(RandomStoreAddress(stores), 5, "guten tag")
+	lAddress3, _ := parseAddressFromError(errWrite2)
 
-	time.Sleep(1 * time.Second)
+	// Retry if not leader
+	if lAddress3 != "" {
+		errWrite2 = userClient.Write(lAddress3, 5, "guten tag")
+	}
 
-	// Read "New World 10"
-	v1, rerr1 := userClient.FastRead(store1, 10)
-	HandleError(rerr1)
-	fmt.Println("Value: ", v1)
+	// FastRead (5)
+	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 5)
+	printValue(value2)
+	printError(errRead2)
 
-	// Read "New World 20"
-	v2, rerr2 := userClient.DefaultRead(store2, 20)
-	HandleError(rerr2)
-	fmt.Println("Value: ", v2)
+	// Default (5)
+	value3, errRead3 := userClient.DefaultRead(RandomStoreAddress(stores), 5)
+	printValue(value3)
+	lAddress4, _ := parseAddressFromError(errRead3)
 
-	// Read "ciao"
-	v3, rerr3 := userClient.ConsistentRead(store1, 30)
-	HandleError(rerr3)
-	fmt.Println("Value: ", v3)
-
-	// Read "World 12"
-	v4, rerr4 := userClient.ConsistentRead(store4, 12)
-	HandleError(rerr4)
-	fmt.Println("Value: ", v4)
+	// Retry if not leader
+	if lAddress4 != "" {
+		value3, errRead3 = userClient.DefaultRead(lAddress4, 5)
+		printValue(value3)
+	}
 }
 
 ///////////////////////////////////////////
@@ -99,7 +90,7 @@ func HandleError(err error) {
 }
 
 // Select a random store address from a list of stores
-func RandomStoreAddress() string {
+func RandomStoreAddress(stores []structs.StoreInfo) string {
 	randomIndex := random(0, len(stores))
 	return stores[randomIndex].Address
 }
@@ -125,4 +116,16 @@ func parseAddressFromError(e error) (string, error) {
 	}
 
 	return "", errors.New("Parsed the wrong error message, does not contain leader address")
+}
+
+func printValue(value string) {
+	if value != "" {
+		fmt.Println("Value: ", value)
+	}
+}
+
+func printError(err error) {
+	if err != nil {
+		fmt.Println(err)
+	}
 }

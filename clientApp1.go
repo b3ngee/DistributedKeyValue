@@ -60,6 +60,7 @@ func main() {
 	// Retry if not leader
 	if lAddress3 != "" {
 		value2, errRead2 = userClient.DefaultRead(lAddress3, 10)
+		printValue(value2)
 	}
 
 	// FastRead (10)
