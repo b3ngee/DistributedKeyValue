@@ -313,7 +313,7 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *boo
 	fmt.Println("HEARTBEAT: ", heartbeat.LeaderAddress)
 	CurrentTerm = heartbeat.Term
 	LeaderAddress = heartbeat.LeaderAddress
-	LeaderHeartbeat = heartbeat.Timestamp
+	LeaderHeartbeat = time.Now()
 	AmILeader = false
 	*ack = true
 	AlreadyVoted = false
@@ -484,7 +484,6 @@ func InitHeartbeatLeader() {
 		fmt.Println("Sending heartbeat...")
 		for _, store := range StoreNetwork {
 			var ack bool
-			heartbeat.Timestamp = time.Now()
 			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
 			if HandleDisconnectedStore(err, store.Address) {
 				fmt.Println("heartbeat disconnected")
