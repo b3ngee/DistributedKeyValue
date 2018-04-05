@@ -38,17 +38,17 @@ func main() {
 		errWrite1 = userClient.Write(lAddress1, 2, "bonjour")
 	}
 
-	// Write (7, yeoboseyo)
-	errWrite2 := userClient.Write(RandomStoreAddress(stores), 7, "yeoboseyo")
+	// Write (1, yeoboseyo)
+	errWrite2 := userClient.Write(RandomStoreAddress(stores), 1, "yeoboseyo")
 	lAddress2, _ := parseAddressFromError(errWrite2)
 
 	// Retry if not leader
 	if lAddress2 != "" {
-		errWrite2 = userClient.Write(lAddress2, 7, "yeoboseyo")
+		errWrite2 = userClient.Write(lAddress2, 1, "yeoboseyo")
 	}
 
-	// Default (6)
-	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 6)
+	// Default (4)
+	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 4)
 	printValue(value1)
 	lAddress3, _ := parseAddressFromError(errRead1)
 
@@ -67,7 +67,7 @@ func main() {
 		errWrite3 = userClient.Write(lAddress4, 3, "bonjour")
 	}
 
-	// FastRead (7)
+	// FastRead (5)
 	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 7)
 	printValue(value2)
 	printError(errRead2)

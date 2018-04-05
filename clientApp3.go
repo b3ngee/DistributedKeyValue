@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// FastRead (5)
-	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 5)
+	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 1)
 	printValue(value2)
 	printError(errRead2)
 
