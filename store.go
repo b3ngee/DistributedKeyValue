@@ -68,6 +68,9 @@ type Store int
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) ConsistentRead(key int, value *string) (err error) {
+	for LeaderAddress == "" {
+	}
+
 	if !AmIConnected {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
@@ -93,6 +96,9 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 //			KeyDoesNotExistError
 //			DisconnectedError
 func (s *Store) DefaultRead(key int, value *string) (err error) {
+	for LeaderAddress == "" {
+	}
+
 	if !AmIConnected {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
@@ -132,6 +138,9 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 // throws	NonLeaderWriteError
 //			DisconnectedError
 func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
+	for LeaderAddress == "" {
+	}
+
 	if !AmIConnected {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
