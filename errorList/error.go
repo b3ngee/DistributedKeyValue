@@ -7,13 +7,13 @@ import "fmt"
 type NonLeaderWriteError string
 
 func (e NonLeaderWriteError) Error() string {
-	return fmt.Sprintf("Write value from non-leader store. Please request again to leader address [%s]", string(e))
+	return fmt.Sprintf("ERROR: Write value from non-leader store. Please request again to leader address [%s]", string(e))
 }
 
 type NonLeaderReadError string
 
 func (e NonLeaderReadError) Error() string {
-	return fmt.Sprintf("Read value from non-leader store. Please request again to leader address [%s]", string(e))
+	return fmt.Sprintf("ERROR: Read value from non-leader store. Please request again to leader address [%s]", string(e))
 }
 
 // Thrown when client reads from a key that does not exist
@@ -21,7 +21,7 @@ func (e NonLeaderReadError) Error() string {
 type KeyDoesNotExistError string
 
 func (e KeyDoesNotExistError) Error() string {
-	return fmt.Sprintf("Key [%s] does not exist in database ", string(e))
+	return fmt.Sprintf("ERROR: Key [%s] does not exist in database ", string(e))
 }
 
 // Thrown when a store is disconnected
@@ -29,5 +29,5 @@ func (e KeyDoesNotExistError) Error() string {
 type DisconnectedError string
 
 func (e DisconnectedError) Error() string {
-	return fmt.Sprintf("[%s] is disconnected. Please try again.", string(e))
+	return fmt.Sprintf("ERROR: [%s] is disconnected. Please try again.", string(e))
 }

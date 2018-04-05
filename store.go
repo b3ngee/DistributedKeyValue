@@ -577,50 +577,52 @@ func ElectNewLeader() {
 
 	// make himself leader if no stores are in network
 	if len(StoreNetwork) == 0 {
+		fmt.Println("0 length")
 		LeaderAddress = StorePublicAddress
 		AmILeader = true
 		CurrentTerm++
 		go InitHeartbeatLeader()
 		UpdateLeadershipOnServer()
-	}
+	} else {
 
-	fmt.Println(StoreNetwork)
+		fmt.Println(StoreNetwork)
 
-	var voteReply chan *rpc.Call
-	for _, store := range StoreNetwork {
-		var vote int
-		if LeaderAddress == "" {
-			voteReply = make(chan *rpc.Call, 1)
-			store.RPCClient.Go("Store.RequestVote", candidateInfo, &vote, voteReply)
-			// if HandleDisconnectedStore(err, store.Address) {
-			// 	continue
-			// }
-		} else {
-			break
-		}
-
-		select {
-		case <-voteReply:
-			if vote == 1 {
-
-				numberOfVotes = numberOfVotes + vote
-
-				if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
-					//EstablishLeaderRole()
-					fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
-					LeaderAddress = StorePublicAddress
-					AmILeader = true
-					go InitHeartbeatLeader()
-					//RollbackAndUpdate()
-					UpdateLeadershipOnServer()
-
-					break
-				}
+		var voteReply chan *rpc.Call
+		for _, store := range StoreNetwork {
+			var vote int
+			if LeaderAddress == "" {
+				voteReply = make(chan *rpc.Call, 1)
+				store.RPCClient.Go("Store.RequestVote", candidateInfo, &vote, voteReply)
+			} else {
+				break
 			}
-		case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
-			fmt.Println("No Clear Winner of election")
-			CurrentTerm++
-			ElectNewLeader()
+
+			select {
+			case v := <-voteReply:
+				if vote == 1 {
+
+					numberOfVotes = numberOfVotes + vote
+
+					if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
+						//EstablishLeaderRole()
+						fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
+						LeaderAddress = StorePublicAddress
+						AmILeader = true
+						go InitHeartbeatLeader()
+						//RollbackAndUpdate()
+						UpdateLeadershipOnServer()
+
+						break
+					}
+				}
+				if HandleDisconnectedStore(v.Error, store.Address) {
+					continue
+				}
+			case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
+				fmt.Println("No Clear Winner of election")
+				CurrentTerm++
+				ElectNewLeader()
+			}
 		}
 	}
 }

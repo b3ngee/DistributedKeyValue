@@ -14,13 +14,9 @@ import (
 	"fmt"
 	"net/rpc"
 
+	"../errorList"
 	"../structs"
 )
-
-type UserClient struct {
-	ServerClient *rpc.Client
-	Stores       []structs.StoreInfo
-}
 
 type UserClientInterface interface {
 
@@ -46,6 +42,16 @@ type UserClientInterface interface {
 	// throws 	KeyDoesNotExistError
 	//			DisconnectedError
 	FastRead(address string, key int) (value string, err error)
+
+	// Refresh stores
+	// Returns the latest store network from the server
+	//
+	RefreshStores() (stores []structs.StoreInfo, err error)
+}
+
+type UserClient struct {
+	ServerClient *rpc.Client
+	Stores       []structs.StoreInfo
 }
 
 // To connect to a server return the interface
@@ -71,6 +77,9 @@ func ConnectToServer(serverPubIP string, clientPubIP string) (cli UserClientInte
 func (uc UserClient) Write(address string, key int, value string) (err error) {
 	var reply bool
 	client, _ := rpc.Dial("tcp", address)
+	if client == nil {
+		return errorList.DisconnectedError(address)
+	}
 	writeReq := structs.WriteRequest{
 		Key:   key,
 		Value: value,
@@ -85,9 +94,12 @@ func (uc UserClient) Write(address string, key int, value string) (err error) {
 // ConsistentRead from a store
 func (uc UserClient) ConsistentRead(address string, key int) (value string, err error) {
 	client, _ := rpc.Dial("tcp", address)
+	if client == nil {
+		return "", errorList.DisconnectedError(address)
+	}
 	err = client.Call("Store.ConsistentRead", key, &value)
 	if err != nil {
-		return "Error", err
+		return "", err
 	}
 
 	return value, err
@@ -96,9 +108,12 @@ func (uc UserClient) ConsistentRead(address string, key int) (value string, err 
 // DefaultRead from a store
 func (uc UserClient) DefaultRead(address string, key int) (value string, err error) {
 	client, _ := rpc.Dial("tcp", address)
+	if client == nil {
+		return "", errorList.DisconnectedError(address)
+	}
 	err = client.Call("Store.DefaultRead", key, &value)
 	if err != nil {
-		return "Error", err
+		return "", err
 	}
 	return value, err
 }
@@ -106,17 +121,25 @@ func (uc UserClient) DefaultRead(address string, key int) (value string, err err
 // FastRead from a store
 func (uc UserClient) FastRead(address string, key int) (value string, err error) {
 	client, _ := rpc.Dial("tcp", address)
+	if client == nil {
+		return "", errorList.DisconnectedError(address)
+	}
 	err = client.Call("Store.FastRead", key, &value)
 	if err != nil {
-		return "Error", err
+		return "", err
 	}
 
 	return value, err
 }
 
-//Updates the map for the client
-func UpdateStoreMap() {
+// Get Updated maps for the client
+func (uc UserClient) RefreshStores() (updatedStores []structs.StoreInfo, err error) {
+	err = uc.ServerClient.Call("Server.RetrieveStores", "", &updatedStores)
+	if err != nil {
+		return updatedStores, err
+	}
 
+	return updatedStores, nil
 }
 
 //handles errors
@@ -133,6 +156,5 @@ func HandleDisconnectedStore(err error, address string) bool {
 			return true
 		}
 	}
-
 	return false
 }
