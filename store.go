@@ -510,6 +510,7 @@ func CheckHeartbeat() {
 		if !AmILeader {
 			time.Sleep(2 * time.Second)
 			currentTime := time.Now()
+			fmt.Println("time diff: ", currentTime.Sub(LeaderHeartbeat).Seconds())
 			if currentTime.Sub(LeaderHeartbeat).Seconds() > 2 {
 				fmt.Println("Did not receive heartbeat in time, re-election")
 				delete(StoreNetwork, LeaderAddress)

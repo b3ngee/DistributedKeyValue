@@ -38,6 +38,8 @@ func main() {
 		errWrite1 = userClient.Write(lAddress1, 3, "hola")
 	}
 
+	time.Sleep(5 * time.Second)
+
 	// Default (2)
 	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 2)
 	printValue(value1)
@@ -57,6 +59,8 @@ func main() {
 	if lAddress3 != "" {
 		errWrite2 = userClient.Write(lAddress3, 5, "guten tag")
 	}
+
+	time.Sleep(5 * time.Second)
 
 	// FastRead (5)
 	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 1)

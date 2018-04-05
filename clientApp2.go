@@ -38,6 +38,8 @@ func main() {
 		errWrite1 = userClient.Write(lAddress1, 2, "bonjour")
 	}
 
+	time.Sleep(5 * time.Second)
+
 	// Write (1, yeoboseyo)
 	errWrite2 := userClient.Write(RandomStoreAddress(stores), 1, "yeoboseyo")
 	lAddress2, _ := parseAddressFromError(errWrite2)

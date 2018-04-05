@@ -52,6 +52,8 @@ func main() {
 		errWrite2 = userClient.Write(lAddress2, 4, "namaste")
 	}
 
+	time.Sleep(5 * time.Second)
+
 	// DefaultRead (10)
 	value2, errRead2 := userClient.DefaultRead(RandomStoreAddress(stores), 10)
 	printValue(value2)
