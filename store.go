@@ -225,8 +225,6 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 			case <-time.After(5 * time.Second):
 				fmt.Println("timed out")
 			}
-		} else {
-			// TODO
 		}
 	} else {
 		return errorList.NonLeaderWriteError(LeaderAddress)
@@ -258,13 +256,6 @@ func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error
 	fmt.Println("this is dictionary: ")
 	fmt.Println(Dictionary)
 
-	return nil
-}
-
-func (s *Store) UpdateConfig(addr string, reply *string) (err error) {
-	delete(StoreNetwork, addr)
-	fmt.Println("Updated Network: ")
-	fmt.Println(StoreNetwork)
 	return nil
 }
 
@@ -492,15 +483,6 @@ func InitHeartbeatLeader() {
 		}
 
 		time.Sleep(2 * time.Second)
-		// if err != nil {
-		// 	fmt.Println("deleting this guy: ", store.Address)
-		// 	delete(StoreNetwork, store.Address)
-		// 	for _, str := range StoreNetwork {
-		// 		str.RPCClient.Call("Store.UpdateConfig", store.Address, &reply)
-		// 	}
-		// 	fmt.Println("Updated Config: ")
-		// 	fmt.Println(StoreNetwork)
-		// }
 	}
 }
 
