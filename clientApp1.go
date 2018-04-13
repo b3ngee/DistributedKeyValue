@@ -38,6 +38,12 @@ func main() {
 		errWrite1 = userClient.Write(lAddress1, 1, "hello")
 	}
 
+	if errWrite1 != nil {
+		printError(errWrite1)
+	} else {
+		printWriteSucess(1, "hello")
+	}
+
 	// FastRead (3)
 	value1, errRead1 := userClient.FastRead(RandomStoreAddress(stores), 3)
 	if value1 != "" {
