@@ -78,6 +78,7 @@ func (s *Store) ConsistentRead(key int, value *string) (err error) {
 	if AmILeader {
 		if _, exists := Dictionary[key]; exists {
 			majorityValue := SearchMajorityValue(key)
+			fmt.Printf("Read { Key: %d, Value: %v } \n", key, majorityValue)
 			*value = majorityValue
 			return nil
 			// [?] Do we need to update the network with majorityValue?
@@ -105,6 +106,7 @@ func (s *Store) DefaultRead(key int, value *string) (err error) {
 
 	if AmILeader {
 		if _, exists := Dictionary[key]; exists {
+			fmt.Printf("Read { Key: %d, Value: %v } \n", key, Dictionary[key])
 			*value = Dictionary[key]
 			return nil
 		} else {
@@ -125,10 +127,10 @@ func (s *Store) FastRead(key int, value *string) (err error) {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
 	if _, exists := Dictionary[key]; exists {
+		fmt.Printf("Read { Key: %d, Value: %v } \n", key, Dictionary[key])
 		*value = Dictionary[key]
 		return nil
 	}
-	fmt.Println(Dictionary)
 	return errorList.KeyDoesNotExistError(strconv.Itoa(key))
 }
 
@@ -169,9 +171,11 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 		if len(StoreNetwork) == 0 {
 
 			Dictionary[request.Key] = request.Value
+			fmt.Printf("Write { Key: %d, Value: %v } \n", request.Key, request.Value)
 			entry.IsCommitted = true
 			entry.Index = entry.Index + 1
 			Log(entry)
+			fmt.Printf("Updated logs after write: %v \n", Logs)
 
 			return nil
 		}
@@ -191,7 +195,7 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 				numacks++
 			}
 		case <-time.After(5 * time.Second):
-			fmt.Println("timed out")
+			fmt.Println("Timed out in WriteLog RPC")
 		}
 
 		var acks2 chan *rpc.Call
@@ -210,6 +214,8 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 
 			Log(entry)
 			Dictionary[request.Key] = request.Value
+			fmt.Printf("Write { Key: %d, Value: %v } \n", request.Key, request.Value)
+			fmt.Printf("Updated logs after write: %v \n", Logs)
 
 			for _, store := range StoreNetwork {
 				numacks2 = 0
@@ -223,7 +229,7 @@ func (s *Store) Write(request structs.WriteRequest, reply *bool) (err error) {
 					numacks2++
 				}
 			case <-time.After(5 * time.Second):
-				fmt.Println("timed out")
+				fmt.Println("Timed out in UpdateDictionary RPC")
 			}
 		}
 	} else {
@@ -248,13 +254,11 @@ func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error
 	if entry.Current.Term >= CurrentTerm && (len(Logs) == 0 || reflect.DeepEqual(Logs[len(Logs)-1], entry.Previous)) {
 		Log(entry.Current)
 		Dictionary[entry.Current.Key] = entry.Current.Value
+		fmt.Printf("Updated Dictionary with { Key: [%d], Value: [%v] } \n", entry.Current.Key, entry.Current.Value)
 		*ack = true
 	} else {
 		*ack = false
 	}
-
-	fmt.Println("this is dictionary: ")
-	fmt.Println(Dictionary)
 
 	return nil
 }
@@ -262,9 +266,8 @@ func (s *Store) UpdateDictionary(entry structs.LogEntries, ack *bool) (err error
 // Registers stores with stores
 //
 func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (err error) {
-	fmt.Println("Receiving registration request from: ")
-	fmt.Println(theirInfo)
 	client, _ := rpc.Dial("tcp", theirInfo.Address)
+	fmt.Printf("Registering store [%v] completed \n", theirInfo.Address)
 
 	StoreNetwork[theirInfo.Address] = structs.Store{
 		Address:   theirInfo.Address,
@@ -279,9 +282,6 @@ func (s *Store) RegisterWithStore(theirInfo structs.StoreInfo, isLeader *bool) (
 // UpdateNewStoreLog is when another store requests from a leader to get an updated log.
 // Leader will add the requesting store to its StoreNetwork.
 func (s *Store) UpdateNewStoreLog(storeAddr string, logEntries *[]structs.LogEntry) (err error) {
-	fmt.Println("Receiving update log request from: ")
-	fmt.Println(storeAddr)
-
 	client, _ := rpc.Dial("tcp", storeAddr)
 
 	StoreNetwork[storeAddr] = structs.Store{
@@ -301,7 +301,7 @@ func (s *Store) ReceiveHeartbeatFromLeader(heartbeat structs.Heartbeat, ack *boo
 	if !AmIConnected {
 		return errorList.DisconnectedError(StorePublicAddress)
 	}
-	fmt.Println("HEARTBEAT: ", heartbeat.LeaderAddress)
+	fmt.Println("Heartbeat sent from: ", heartbeat.LeaderAddress)
 	CurrentTerm = heartbeat.Term
 	LeaderAddress = heartbeat.LeaderAddress
 	LeaderHeartbeat = time.Now()
@@ -345,8 +345,7 @@ func (s *Store) RequestVote(candidateInfo structs.CandidateInfo, vote *int) (err
 func (s *Store) RollbackAndUpdate(leaderLogs []structs.LogEntry, ack *bool) (err error) {
 	leaderIndex := len(leaderLogs) - 1
 	currentIndex := len(Logs) - 1
-	fmt.Println("Previous Logs: ", Logs)
-	fmt.Println("Previous Dictionary: ", Dictionary)
+	fmt.Printf("Previous Logs: %v \nPrevious Dictionary: %v \n", Logs, Dictionary)
 	if leaderIndex < 0 || currentIndex < 0 {
 		return errors.New("Index is negative. Leader log or current log is empty.")
 	}
@@ -365,17 +364,16 @@ func (s *Store) RollbackAndUpdate(leaderLogs []structs.LogEntry, ack *bool) (err
 	SynchronizeLogs(leaderLogs, comparingIndex+1)
 	UpdateDictionaryFromLogs()
 
-	fmt.Println("New Logs: ", Logs)
-	fmt.Println("New Dictionary: ", Dictionary)
+	fmt.Printf("Updated Logs: %v \nUpdated Dictionary: %v \n", Logs, Dictionary)
 	return nil
 }
 
 // Called when a store detects a disconnected store. Delete store from map
 //
 func (s *Store) DeleteDisconnectedStore(address string, ack *bool) (err error) {
-	fmt.Println("Before: ", StoreNetwork)
+	fmt.Println("Store before disconnection update: ", StoreNetwork)
 	delete(StoreNetwork, address)
-	fmt.Println("Updated store: ", StoreNetwork)
+	fmt.Println("Store after disconnection update: ", StoreNetwork)
 	*ack = true
 	return nil
 }
@@ -392,7 +390,6 @@ func RegisterWithServer() {
 	var logsToUpdate []structs.LogEntry
 
 	client.Call("Server.RegisterStoreFirstPhase", StorePublicAddress, &leaderStore)
-	fmt.Println("After first phase: ", leaderStore, StorePublicAddress)
 
 	if leaderStore.Address == StorePublicAddress {
 
@@ -425,8 +422,7 @@ func RegisterWithServer() {
 
 		client.Call("Server.RegisterStoreSecondPhase", StorePublicAddress, &listOfStores)
 
-		fmt.Println("Registering with server succeess, received: ")
-		fmt.Println(listOfStores)
+		fmt.Println("Successfully registered with server. Received store network: ", listOfStores)
 
 		for _, store := range listOfStores {
 			if store.IsLeader {
@@ -465,8 +461,8 @@ func RegisterStore(store string) {
 		RPCClient: client,
 		IsLeader:  isLeader,
 	}
-	fmt.Println("this is the store network: ")
-	fmt.Println(StoreNetwork)
+
+	fmt.Printf("Registered store [%v] into our store network \n", store)
 }
 
 func InitHeartbeatLeader() {
@@ -477,7 +473,7 @@ func InitHeartbeatLeader() {
 			var ack bool
 			err := store.RPCClient.Call("Store.ReceiveHeartbeatFromLeader", heartbeat, &ack)
 			if HandleDisconnectedStore(err, store.Address) {
-				fmt.Println("heartbeat disconnected")
+				fmt.Printf("Heartbeat was not received, [%v] is disconnected \n", store.Address)
 				continue
 			}
 		}
@@ -491,9 +487,8 @@ func CheckHeartbeat() {
 		if !AmILeader {
 			time.Sleep(2 * time.Second)
 			currentTime := time.Now()
-			fmt.Println("time diff: ", currentTime.Sub(LeaderHeartbeat).Seconds())
 			if currentTime.Sub(LeaderHeartbeat).Seconds() > 3 {
-				fmt.Println("Did not receive heartbeat in time, re-election")
+				fmt.Println("Leader heartbeat was not received on time. Leader election starting...")
 				delete(StoreNetwork, LeaderAddress)
 				LeaderAddress = ""
 				LeaderHeartbeat = time.Time{}
@@ -543,8 +538,6 @@ func SearchMajorityValue(key int) string {
 
 func Log(entry structs.LogEntry) {
 	Logs = append(Logs, entry)
-	fmt.Println("This is current log: ")
-	fmt.Println(Logs)
 }
 
 func ElectNewLeader() {
@@ -559,16 +552,13 @@ func ElectNewLeader() {
 
 	// make himself leader if no stores are in network
 	if len(StoreNetwork) == 0 {
-		fmt.Println("0 length")
 		LeaderAddress = StorePublicAddress
 		AmILeader = true
 		CurrentTerm++
+		fmt.Printf("New leader selected: [%v] for term [%d] \n", StorePublicAddress, CurrentTerm)
 		go InitHeartbeatLeader()
 		UpdateLeadershipOnServer()
 	} else {
-
-		fmt.Println(StoreNetwork)
-
 		var voteReply chan *rpc.Call
 		for _, store := range StoreNetwork {
 			var vote int
@@ -586,14 +576,13 @@ func ElectNewLeader() {
 					numberOfVotes = numberOfVotes + vote
 
 					if numberOfVotes > len(StoreNetwork)/2 && LeaderAddress == "" {
-						//EstablishLeaderRole()
-						fmt.Println("NEW LEADER IS SELECTED: ", StorePublicAddress)
 						LeaderAddress = StorePublicAddress
 						AmILeader = true
+						CurrentTerm++
+						fmt.Printf("New leader selected: [%v] for term [%d] \n", StorePublicAddress, CurrentTerm)
 						go InitHeartbeatLeader()
-						//RollbackAndUpdate()
+						RollbackAndUpdate()
 						UpdateLeadershipOnServer()
-
 						break
 					}
 				}
@@ -601,7 +590,7 @@ func ElectNewLeader() {
 					continue
 				}
 			case <-time.After(time.Duration(rand.Intn(300-150)+150) * time.Millisecond):
-				fmt.Println("No Clear Winner of election")
+				fmt.Println("No clear winner of election. New election starting...")
 				CurrentTerm++
 				ElectNewLeader()
 			}

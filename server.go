@@ -47,8 +47,7 @@ func (server *Server) RegisterClient(clientAddress string, reply *[]structs.Stor
 // -
 func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *structs.StoreInfo) error {
 
-	fmt.Println("New Incoming Store: ")
-	fmt.Println(storeAddress)
+	fmt.Printf("First phase registering: [%v] in-progress \n", storeAddress)
 
 	if len(StoreAddresses) == 0 {
 		newLeader := structs.StoreInfo{Address: storeAddress, IsLeader: true}
@@ -63,10 +62,8 @@ func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *struct
 					StoreAddresses = append(StoreAddresses[:i], StoreAddresses[i+1:]...)
 					newLeader := structs.StoreInfo{Address: storeAddress, IsLeader: true}
 					StoreAddresses = append(StoreAddresses, newLeader)
-					fmt.Println("client is nil: ", StoreAddresses)
 					*reply = newLeader
 				} else {
-					fmt.Println("never here?")
 					*reply = store
 				}
 
@@ -75,6 +72,8 @@ func (server *Server) RegisterStoreFirstPhase(storeAddress string, reply *struct
 		}
 
 	}
+
+	fmt.Printf("First phase registering: [%v] completed \n", storeAddress)
 
 	return nil
 }
@@ -96,12 +95,13 @@ func (server *Server) RetrieveStores(didNotUse string, reply *[]structs.StoreInf
 // -
 func (server *Server) RegisterStoreSecondPhase(storeAddress string, reply *[]structs.StoreInfo) error {
 
-	fmt.Println("Store is up to date with the logs, currently registering: ")
-	fmt.Println(storeAddress)
+	fmt.Printf("Second phase registering: [%v] in-progress \n", storeAddress)
 
 	StoreAddresses = append(StoreAddresses, structs.StoreInfo{Address: storeAddress, IsLeader: false})
 
 	*reply = StoreAddresses
+
+	fmt.Printf("Second phase registering: [%v] completed \n", storeAddress)
 
 	return nil
 }
@@ -109,32 +109,33 @@ func (server *Server) RegisterStoreSecondPhase(storeAddress string, reply *[]str
 // Stores call this method to inform the server which address is disconnected and allow server to
 // update the store network
 func (server *Server) DisconnectStore(storeAddress string, reply *bool) error {
-	fmt.Println("Store before: ", StoreAddresses)
+	fmt.Printf("Disconnecting [%v] in-progress \n", storeAddress)
 	for i, store := range StoreAddresses {
 		if store.Address == storeAddress {
 			StoreAddresses = append(StoreAddresses[:i], StoreAddresses[i+1:]...)
 		}
 	}
-	fmt.Println("Store After: ", StoreAddresses)
 	*reply = true
+
+	fmt.Printf("Disconnecting [%v] completed \n", storeAddress)
 	return nil
 }
 
 // Update the leadership role once a new leader is elected
 func (server *Server) UpdateLeadership(leaderAddress string, reply *bool) error {
-	fmt.Println("Leadership before: ", StoreAddresses)
 	indexToDelete := 0
 	for i, store := range StoreAddresses {
 		if store.IsLeader && store.Address != leaderAddress {
+			fmt.Printf("Leader election in-progress. Previous leader [%v] \n", store.Address)
 			indexToDelete = i
 		}
 		if store.Address == leaderAddress {
 			store.IsLeader = true
 			StoreAddresses[i] = store
+			fmt.Printf("Leader election complted. New leader [%v] \n", leaderAddress)
 		}
 	}
 	StoreAddresses = append(StoreAddresses[:indexToDelete], StoreAddresses[indexToDelete+1:]...)
-	fmt.Println("Leadership After: ", StoreAddresses)
 	*reply = true
 	return nil
 }
