@@ -40,8 +40,11 @@ func main() {
 
 	// FastRead (3)
 	value1, errRead1 := userClient.FastRead(RandomStoreAddress(stores), 3)
-	printValue(value1)
-	printError(errRead1)
+	if value1 != "" {
+		printValue(3, value1)
+	} else {
+		printError(errRead1)
+	}
 
 	// Write (4, namaste)
 	errWrite2 := userClient.Write(RandomStoreAddress(stores), 4, "namaste")
@@ -52,23 +55,38 @@ func main() {
 		errWrite2 = userClient.Write(lAddress2, 4, "namaste")
 	}
 
+	if errWrite2 != nil {
+		printError(errWrite2)
+	} else {
+		printWriteSucess(4, "namaste")
+	}
+
 	time.Sleep(5 * time.Second)
 
 	// DefaultRead (10)
 	value2, errRead2 := userClient.DefaultRead(RandomStoreAddress(stores), 10)
-	printValue(value2)
+
 	lAddress3, _ := parseAddressFromError(errRead2)
 
 	// Retry if not leader
 	if lAddress3 != "" {
 		value2, errRead2 = userClient.DefaultRead(lAddress3, 10)
-		printValue(value2)
+	}
+
+	if value2 != "" {
+		printValue(10, value2)
+	} else {
+		printError(errRead1)
 	}
 
 	// FastRead (10)
 	value3, errRead3 := userClient.FastRead(RandomStoreAddress(stores), 10)
-	printValue(value3)
-	printError(errRead3)
+
+	if value3 != "" {
+		printValue(10, value3)
+	} else {
+		printError(errRead3)
+	}
 }
 
 ///////////////////////////////////////////
@@ -114,10 +132,14 @@ func parseAddressFromError(e error) (string, error) {
 	return "", errors.New("Parsed the wrong error message, does not contain leader address")
 }
 
-func printValue(value string) {
+func printValue(key int, value string) {
 	if value != "" {
-		fmt.Println("Value: ", value)
+		fmt.Printf("Read Success { Key: %d, Value: %v } \n", key, value)
 	}
+}
+
+func printWriteSucess(key int, value string) {
+	fmt.Printf("Write Success { Key: %d, Value: %v } \n", key, value)
 }
 
 func printError(err error) {

@@ -35,7 +35,13 @@ func main() {
 
 	// Retry if not leader
 	if lAddress1 != "" {
-		errWrite1 = userClient.Write(lAddress1, 3, "ㅜni hao")
+		errWrite1 = userClient.Write(lAddress1, 3, "ni hao")
+	}
+
+	if errWrite1 != nil {
+		printError(errWrite1)
+	} else {
+		printWriteSucess(3, "ni hao")
 	}
 
 	// Write (6, "konichiwa")
@@ -47,6 +53,12 @@ func main() {
 		errWrite1 = userClient.Write(lAddress2, 6, "konichiwa")
 	}
 
+	if errWrite2 != nil {
+		printError(errWrite2)
+	} else {
+		printWriteSucess(6, "konichiwa")
+	}
+
 	// Write (2, "konichiwa")
 	errWrite3 := userClient.Write(RandomStoreAddress(stores), 2, "konichiwa")
 	lAddress3, _ := parseAddressFromError(errWrite3)
@@ -56,20 +68,35 @@ func main() {
 		errWrite3 = userClient.Write(lAddress2, 2, "konichiwa")
 	}
 
+	if errWrite3 != nil {
+		printError(errWrite3)
+	} else {
+		printWriteSucess(2, "konichiwa")
+	}
+
 	// FastRead (2)
 	value1, errRead1 := userClient.FastRead(RandomStoreAddress(stores), 2)
-	printValue(value1)
-	printError(errRead1)
+	if value1 != "" {
+		printValue(2, value1)
+	} else {
+		printError(errRead1)
+	}
 
 	// DefaultRead (2)
-	value2, errRead2 := userClient.DefaultRead(RandomStoreAddress(stores), 2)
-	printValue(value2)
+	value2, errRead2 := userClient.DefaultRead(RandomStoreAddress(stores), 10)
+
 	lAddress4, _ := parseAddressFromError(errRead2)
 	// Retry if not leader
 	if lAddress4 != "" {
 		value2, errRead2 = userClient.DefaultRead(lAddress4, 10)
 	}
-	printValue(value2)
+
+	if value2 != "" {
+		printValue(10, value2)
+	} else {
+		printError(errRead2)
+	}
+
 }
 
 ///////////////////////////////////////////
@@ -115,10 +142,14 @@ func parseAddressFromError(e error) (string, error) {
 	return "", errors.New("Parsed the wrong error message, does not contain leader address")
 }
 
-func printValue(value string) {
+func printValue(key int, value string) {
 	if value != "" {
-		fmt.Println("Value: ", value)
+		fmt.Printf("Read Success { Key: %d, Value: %v } \n", key, value)
 	}
+}
+
+func printWriteSucess(key int, value string) {
+	fmt.Printf("Write Success { Key: %d, Value: %v } \n", key, value)
 }
 
 func printError(err error) {

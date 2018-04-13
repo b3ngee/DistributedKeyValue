@@ -38,17 +38,27 @@ func main() {
 		errWrite1 = userClient.Write(lAddress1, 3, "hola")
 	}
 
+	if errWrite1 != nil {
+		printError(errWrite1)
+	} else {
+		printWriteSucess(3, "hola")
+	}
+
 	time.Sleep(5 * time.Second)
 
 	// Default (2)
 	value1, errRead1 := userClient.DefaultRead(RandomStoreAddress(stores), 2)
-	printValue(value1)
 	lAddress2, _ := parseAddressFromError(errRead1)
 
 	// Retry if not leader
 	if lAddress2 != "" {
 		value1, errRead1 = userClient.DefaultRead(lAddress2, 2)
-		printValue(value1)
+	}
+
+	if value1 != "" {
+		printValue(2, value1)
+	} else {
+		printError(errRead1)
 	}
 
 	// Write (5, guten tag)
@@ -60,22 +70,36 @@ func main() {
 		errWrite2 = userClient.Write(lAddress3, 5, "guten tag")
 	}
 
+	if errWrite2 != nil {
+		printError(errWrite2)
+	} else {
+		printWriteSucess(5, "guten tag")
+	}
+
 	time.Sleep(5 * time.Second)
 
 	// FastRead (5)
 	value2, errRead2 := userClient.FastRead(RandomStoreAddress(stores), 1)
-	printValue(value2)
-	printError(errRead2)
+
+	if value2 != "" {
+		printValue(1, value2)
+	} else {
+		printError(errRead2)
+	}
 
 	// Default (5)
 	value3, errRead3 := userClient.DefaultRead(RandomStoreAddress(stores), 5)
-	printValue(value3)
 	lAddress4, _ := parseAddressFromError(errRead3)
 
 	// Retry if not leader
 	if lAddress4 != "" {
 		value3, errRead3 = userClient.DefaultRead(lAddress4, 5)
-		printValue(value3)
+	}
+
+	if value3 != "" {
+		printValue(5, value3)
+	} else {
+		printError(errRead3)
 	}
 }
 
@@ -122,10 +146,14 @@ func parseAddressFromError(e error) (string, error) {
 	return "", errors.New("Parsed the wrong error message, does not contain leader address")
 }
 
-func printValue(value string) {
+func printValue(key int, value string) {
 	if value != "" {
-		fmt.Println("Value: ", value)
+		fmt.Printf("Read Success { Key: %d, Value: %v } \n", key, value)
 	}
+}
+
+func printWriteSucess(key int, value string) {
+	fmt.Printf("Write Success { Key: %d, Value: %v } \n", key, value)
 }
 
 func printError(err error) {
